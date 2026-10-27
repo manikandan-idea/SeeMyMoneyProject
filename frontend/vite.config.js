@@ -1,7 +1,8 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
-// https://vite.dev/config/
+// base './' keeps the built files working from any folder (and later inside an Android wrapper).
 export default defineConfig({
+  base: './',
   plugins: [react()],
 })

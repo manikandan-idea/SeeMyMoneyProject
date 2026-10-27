@@ -1,16 +1,37 @@
-# React + Vite
+# See My Money
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A private, offline money notebook. Record income, expenses and savings (even a ₹10 tea),
+organise them in folders, and see where your money goes. Records stay on the phone.
 
-Currently, two official plugins are available:
+## Run it
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```bash
+npm install
+npm run dev        # development
+npm run build      # production build into dist/
+npm run preview    # try the production build (offline support only works here, not in dev)
+```
 
-## React Compiler
+## How it works
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| Area | File(s) |
+| --- | --- |
+| Screens (Home, History, Summary, Settings) | `src/views/` |
+| Reusable pieces (forms, folder cards, checklist…) | `src/components/` |
+| **Database access (IndexedDB) — the only file that touches storage** | `src/data/storage.js` |
+| App state; every save is confirmed by the database before "Saved" shows | `src/data/useStore.jsx` |
+| Pure logic: reports, backup validation, data-health checks | `src/data/logic.js` |
+| Money in paise, local-date handling, unique IDs | `src/utils/` |
+| Offline support (service worker + manifest) | `public/sw.js`, `public/manifest.webmanifest` |
 
-## Expanding the Oxlint configuration
+### Key rules
+- **Transactions and folders are separate.** Every entry is one record in a flat list; a folder is only a label.
+  Hiding, submitting or restarting a folder never moves or deletes entries.
+- Daily / monthly / yearly folders "start fresh" because they show only entries dated in the current day / month / year.
+- Money is stored as whole **paise** (integers). Dates are local `YYYY-MM-DD` strings, so no timezone shifts.
+- Income, Expense and Saving are always totalled separately. There is no combined balance.
+- Backup files are versioned JSON, fully validated before a restore, and applied in one all-or-nothing transaction.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+### Moving to Android later
+Wrap the built app with Capacitor. Then replace the body of `src/data/storage.js` with an SQLite
+implementation (same `loadAll` / `write` functions). No other file needs to change.
