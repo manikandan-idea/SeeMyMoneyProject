@@ -1,0 +1,71 @@
+/* Dashboard + Summary styles. Scoped with the sum- prefix; uses the global tokens
+   from index.css (--card, --border, --green, --red, --blue ...). */
+
+.sum-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
+  margin-top: 16px;
+}
+.sum-card__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sum-card__title { margin: 0 0 10px; font-size: 16px; color: var(--heading); }
+.sum-card__head .sum-card__title { margin-bottom: 0; }
+.sum-card__links { display: flex; gap: 12px; }
+.sum-link { background: none; border: 0; padding: 4px 0; font: inherit; font-size: 14px; color: var(--blue); cursor: pointer; }
+.sum-link:hover { text-decoration: underline; }
+
+.summary { max-width: 900px; margin: 0 auto; padding: 16px; }
+.sum-top { display: flex; align-items: center; gap: 12px; }
+.sum-title { margin: 0; font-size: 22px; color: var(--heading); }
+.sum-back { padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); font: inherit; cursor: pointer; }
+
+.sum-periods { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.sum-chip { padding: 8px 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); font: inherit; font-size: 14px; color: var(--text); cursor: pointer; }
+.sum-chip--on { background: var(--blue); border-color: var(--blue); color: #fff; }
+.sum-chip:focus-visible, .sum-link:focus-visible, .sum-back:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+.sum-range { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 12px; }
+.sum-range label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.sum-range input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font: inherit; }
+.sum-error { margin: 0; color: var(--red); font-size: 14px; }
+
+/* three separate totals - deliberately never combined */
+.sum-trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 0; }
+.sum-trio__item { background: var(--card); border: 1px solid var(--border); border-top: 4px solid var(--accent); border-radius: var(--radius); padding: 12px; min-width: 0; }
+.sum-trio__item--income { --accent: var(--green); }
+.sum-trio__item--expense { --accent: var(--red); }
+.sum-trio__item--saving { --accent: var(--blue); }
+.sum-trio dt { font-size: 13px; color: var(--muted); }
+.sum-trio dd { margin: 4px 0 0; font-size: 18px; font-weight: 700; color: var(--heading); overflow-wrap: anywhere; }
+.sum-note { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+.sum-empty { margin: 0; color: var(--muted); font-size: 14px; }
+
+.sum-text--income { color: var(--green); }
+.sum-text--expense { color: var(--red); }
+.sum-text--saving { color: var(--blue); }
+
+.sum-recent, .sum-break { list-style: none; margin: 0; padding: 0; }
+.sum-recent__row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); }
+.sum-recent__row:first-child { border-top: 0; }
+.sum-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--muted); }
+.sum-dot--income { background: var(--green); }
+.sum-dot--expense { background: var(--red); }
+.sum-dot--saving { background: var(--blue); }
+.sum-recent__main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.sum-recent__title { font-weight: 600; color: var(--heading); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sum-recent__meta { font-size: 12px; color: var(--muted); }
+.sum-recent__amount { font-weight: 700; white-space: nowrap; }
+
+.sum-break__row { display: flex; align-items: baseline; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); }
+.sum-break__row:first-child { border-top: 0; }
+.sum-break__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sum-break__count { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.sum-break__amount { font-weight: 700; white-space: nowrap; }
+
+@media (max-width: 520px) {
+  .sum-trio { grid-template-columns: 1fr; }
+  .sum-trio__item { display: flex; justify-content: space-between; align-items: baseline; border-top-width: 1px; border-left: 4px solid var(--accent); }
+  .sum-trio dd { margin: 0; }
+}
