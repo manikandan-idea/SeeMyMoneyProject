@@ -35,3 +35,15 @@ npm run preview    # try the production build (offline support only works here, 
 ### Moving to Android later
 Wrap the built app with Capacitor. Then replace the body of `src/data/storage.js` with an SQLite
 implementation (same `loadAll` / `write` functions). No other file needs to change.
+
+## Run
+
+```
+npm install
+npm run dev      # development
+npm test         # domain + integration tests (Node built-in runner)
+npm run lint
+npm run build    # production build; the service worker registers only in production
+```
+
+Data lives in IndexedDB (`see-my-money`). Sample data is imported once, on a genuinely empty database. See `src/data/README.md` and `handoffs/`.

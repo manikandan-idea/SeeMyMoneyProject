@@ -1,22 +1,26 @@
-// Hidden folders page: every 🙈-hidden folder across all three sections,
-// with a Restore button that makes it active again.
+// Hidden folders page: every hidden folder across all three sections, with a
+// Restore button. Hiding never deletes anything; restoring just un-hides.
+//
+// Props: state (AppState), onBack(), onRestore(folderId),
+//        getFolderTotals(folderId) -> { total, count }   (optional)
 
 import { formatINR } from '../utils/format.js'
-import { collectHidden, directTotalOf } from '../data/sampleData.js'
+import { selectHiddenFolders } from '../domain/folderChecklist.js'
+import './folders.css'
 
-const sections = [
-  { id: 'income', title: 'Income', icon: '💰' },
-  { id: 'expense', title: 'Expense', icon: '💸' },
-  { id: 'saving', title: 'Saving', icon: '🐖' },
-]
+const SECTION_ICONS = { income: '💰', expense: '💸', saving: '🐖' }
 
-function HiddenView({ data, onBack, onRestore }) {
-  const entries = []
-  for (const section of sections) {
-    for (const found of collectHidden(data[section.id])) {
-      entries.push({ ...found, section })
-    }
-  }
+function usageLabel(folder) {
+  if (folder.usage === 'daily') return 'Daily'
+  if (folder.usage === 'monthly') return 'Monthly'
+  if (folder.usage === 'yearly') return 'Yearly'
+  if (folder.usage === 'occasional') return folder.frequency === 'once' ? 'One-time' : 'Multi-use'
+  return null
+}
+
+function HiddenView({ state, onBack, onRestore, getFolderTotals }) {
+  const titleOf = (id) => state.sections.find((s) => s.id === id)?.title ?? id
+  const entries = selectHiddenFolders(state)
 
   return (
     <main className="section">
@@ -33,35 +37,29 @@ function HiddenView({ data, onBack, onRestore }) {
         </div>
       ) : (
         <div className="items-panel">
-          {entries.map(({ folder, names, section }) => (
-            <div key={folder.id} className="hidden-row">
-              <div className="item-row__main">
-                <div className="item-row__desc">📁 {folder.name}</div>
-                <div className="item-row__date">
-                  {section.icon} {section.title} › {names.join(' › ')}
-                  {' · '}
-                  {folder.usage === 'daily'
-                    ? 'Daily'
-                    : folder.usage === 'monthly'
-                      ? 'Monthly'
-                      : folder.usage === 'yearly'
-                        ? 'Yearly'
-                        : folder.frequency === 'once'
-                          ? 'One-time'
-                          : 'Multi-use'}
-                  {' · '}
-                  {formatINR(directTotalOf(folder))}
+          {entries.map(({ folder, names, sectionId }) => {
+            const totals = getFolderTotals ? getFolderTotals(folder.id) : null
+            return (
+              <div key={folder.id} className="hidden-row">
+                <div className="item-row__main">
+                  <div className="item-row__desc">📁 {folder.name}</div>
+                  <div className="item-row__date">
+                    {SECTION_ICONS[sectionId]} {titleOf(sectionId)} › {names.join(' › ')}
+                    {usageLabel(folder) ? ` · ${usageLabel(folder)}` : ''}
+                    {totals ? ` · ${formatINR(totals.total)}` : ''}
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  aria-label={`Restore folder ${folder.name}`}
+                  onClick={() => onRestore(folder.id)}
+                >
+                  👁 Restore
+                </button>
               </div>
-              <button
-                type="button"
-                className="btn btn--ghost"
-                onClick={() => onRestore(folder.id)}
-              >
-                👁 Restore
-              </button>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </main>

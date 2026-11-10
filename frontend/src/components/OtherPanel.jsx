@@ -1,5 +1,8 @@
-// "Other" panel: irregular, one-off money for the current folder.
-// Amount is required; details are optional and typed manually.
+// "Other" panel: irregular, one-off money for the current folder (a standalone
+// record that is NOT linked to a checklist).
+// `others` = the folder's standalone Other transactions (display only, from the
+// integrator). Adding calls onAdd({ amount, details }); this component never
+// creates or changes transaction rows itself.
 
 import { useEffect, useState } from 'react'
 import { formatINR, formatDateTime } from '../utils/format.js'
@@ -56,7 +59,7 @@ function OtherPanel({ others, onAdd }) {
         others.map((other) => (
           <div key={other.id} className="item-row">
             <div className="item-row__main">
-              <div className="item-row__desc">{other.details || 'Other'}</div>
+              <div className="item-row__desc">{other.description || 'Other'}</div>
               <div className="item-row__date">{formatDateTime(other.recordedAt)}</div>
             </div>
             <div className="item-row__amount">{formatINR(other.amount)}</div>

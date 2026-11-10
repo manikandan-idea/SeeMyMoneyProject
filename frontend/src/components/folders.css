@@ -1,0 +1,109 @@
+/* Developer 2 additions — compact checklist rows, Saving Area, folder card extras.
+   Uses the existing design tokens (--accent, --border, --muted ...). */
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.pill {
+  min-height: 34px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--accent);
+  background: var(--card);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.pill:hover,
+.pill:focus-visible {
+  background: var(--accent);
+  color: #fff;
+}
+
+.pill--primary {
+  font-weight: 700;
+}
+
+.pill--icon {
+  padding: 0 9px;
+  border-color: var(--border);
+  color: inherit;
+}
+
+.btn--danger {
+  margin-right: auto;
+  color: var(--red);
+  background: transparent;
+  border: 1px solid var(--red);
+}
+
+.btn--danger:hover {
+  background: var(--red);
+  color: #fff;
+}
+
+.folder-card__saving {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  padding: 2px 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--card);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.folder-card__saving:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.saving-area {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 16px 10px;
+  margin-bottom: 22px;
+  box-shadow: var(--shadow-sm);
+}
+
+.saving-area__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.saving-area__row:last-child {
+  border-bottom: none;
+}
+
+.saving-area__count {
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 480px) {
+  .checklist__row {
+    flex-wrap: wrap;
+  }
+  .row-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
