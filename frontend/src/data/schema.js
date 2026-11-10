@@ -256,7 +256,8 @@ function checkFolder(f, label, add) {
 }
 
 function checkChecklist(c, label, add) {
-  if (!isNonEmptyString(c.folderId)) add(`${label}.folderId must be a folder id.`)
+  // null = a checklist that lives directly on a period page (not inside a folder)
+  if (!isStringOrNull(c.folderId)) add(`${label}.folderId must be a folder id or null.`)
   if (typeof c.title !== 'string') add(`${label}.title must be a string.`)
   if (!isPositiveAmount(c.defaultAmount)) add(`${label}.defaultAmount must be a positive number.`)
   if (!TRANSACTION_TYPES.includes(c.transactionType)) add(`${label}.transactionType is invalid.`)

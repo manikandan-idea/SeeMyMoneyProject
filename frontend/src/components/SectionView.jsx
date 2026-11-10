@@ -234,7 +234,7 @@ function SectionView({
     <main className={`section section--${sectionId}`}>
       <div className="section__toolbar">
         <button type="button" className="btn btn--ghost" onClick={onBack}>
-          ← Dashboard
+          ← Back
         </button>
         <Breadcrumb
           crumbs={crumbs}
@@ -286,8 +286,15 @@ function SectionView({
             </>
           )}
         </div>
-        {totals && <span className="section__total">{formatINR(totals.total)}</span>}
       </div>
+
+      {totals && totals.expense !== undefined && (
+        <div className="period__boxes" aria-label="Totals for this folder">
+          <div className="pbox pbox--expense"><span>Spend</span><strong>{formatINR(totals.expense)}</strong></div>
+          <div className="pbox pbox--income"><span>Received</span><strong>{formatINR(totals.income)}</strong></div>
+          <div className="pbox pbox--saving"><span>Savings</span><strong>{formatINR(totals.saving)}</strong></div>
+        </div>
+      )}
 
       {node && (
         <ChecklistPanel
@@ -307,7 +314,9 @@ function SectionView({
           }
           onUpdateDefault={(checklistId, defaultAmount) => actions.updateChecklist(checklistId, { defaultAmount })}
           onDelete={(checklistId) => actions.deleteChecklist(checklistId)}
-          onAdd={(title, defaultAmount) => actions.createChecklist({ folderId: node.id, title, defaultAmount })}
+          defaultType={sectionId}
+          onAdd={(title, defaultAmount, transactionType) =>
+            actions.createChecklist({ folderId: node.id, title, defaultAmount, transactionType })}
           onAddToSavingArea={(checklistId) =>
             actions.addSavingAreaEntry({ ownerFolderId: node.id, sourceType: 'checklist', sourceId: checklistId })
           }

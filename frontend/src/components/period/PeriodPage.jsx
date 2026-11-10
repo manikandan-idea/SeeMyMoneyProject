@@ -8,10 +8,13 @@
 //   onTab(tab)
 //   onOpenFolder(folder)                 open that folder's view (same folder, not a copy)
 //   onAddFolder({ name, sectionId, usage, frequency })
-//   onRecord({ folderId, checklistId, sectionId })   one Record at the default amount
+//   actions = { record(checklistId, amount, source), updateChecklist(id, patch),
+//               deleteChecklist(id), createChecklist({ title, defaultAmount, transactionType, frequency }) }
 
 import { useEffect, useMemo, useState } from 'react'
 import { formatINR } from '../../utils/format.js'
+import ChecklistPanel from '../ChecklistPanel.jsx'
+import { getChecklistUsageCount } from '../../domain/records.js'
 import { calculatePeriodTotals, calculateFolderTotals, getPeriodRange } from '../../domain/analytics.js'
 
 export const TABS = [
@@ -85,7 +88,7 @@ function AddFolderDialog({ tab, onConfirm, onCancel }) {
   )
 }
 
-function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onRecord }) {
+function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, actions }) {
   const tab = TABS.find((t) => t.id === tabId) ?? TABS[0]
   const [adding, setAdding] = useState(false)
 
@@ -154,28 +157,18 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onRec
         <>
           {tab.usage !== 'occasional' && (
             <section className="period__card">
-              <div className="period__head"><h2>Checklist</h2></div>
-              {view.checklists.length === 0 ? (
-                <p className="period__empty">{tab.empty} Add checklists inside a folder.</p>
-              ) : (
-                <ul className="period__list">
-                  {view.checklists.map((c) => (
-                    <li key={c.id} className="crow">
-                      <span className="crow__count" aria-label="records in this period">{c.periodCount}</span>
-                      <span className="crow__name">
-                        {c.title}
-                        <small>{view.folderById.get(c.folderId)?.name}</small>
-                      </span>
-                      <span className="crow__amt">{formatINR(c.defaultAmount)}</span>
-                      <button type="button" className="crow__add"
-                        aria-label={`Record ${c.title} ${formatINR(c.defaultAmount)}`}
-                        onClick={() => onRecord({ folderId: c.folderId, checklistId: c.id, sectionId: c.sectionId })}>
-                        + {formatINR(c.defaultAmount)}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <ChecklistPanel
+                rows={view.checklists}
+                getUsageCount={(id) => getChecklistUsageCount(state, id)}
+                canAddToSavingArea={false}
+                defaultType="expense"
+                onRecord={(id) => actions.record(id, view.checklists.find((c) => c.id === id).defaultAmount, 'checklist')}
+                onRecordOther={(id, amount) => actions.record(id, amount, 'checklist-other')}
+                onUpdateDefault={(id, defaultAmount) => actions.updateChecklist(id, { defaultAmount })}
+                onDelete={(id) => actions.deleteChecklist(id)}
+                onAdd={(title, defaultAmount, transactionType) =>
+                  actions.createChecklist({ title, defaultAmount, transactionType, frequency: tab.usage })}
+              />
             </section>
           )}
 

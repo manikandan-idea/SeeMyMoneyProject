@@ -231,6 +231,15 @@ export function duplicateFolderStructure(state, folderId) {
 // transactionType defaults to the folder's section; frequency defaults to the
 // folder's usage when that is daily/monthly/yearly (the page already says so).
 export function createChecklistTemplate(state, input) {
+  // A checklist placed directly on a period page has no folder (folderId null).
+  // Its section follows the chosen type (Spend=expense, Received=income, Savings=saving).
+  if (input.folderId === undefined || input.folderId === null) {
+    const type = resolveTransactionType({ sectionId: input.sectionId || 'expense' }, input.transactionType || input.sectionId)
+    requireSection(state, type)
+    const pseudo = { id: null, sectionId: type, usage: input.frequency ?? null }
+    const root = buildChecklist(pseudo, { ...input, transactionType: type, frequency: input.frequency ?? null }, nowIso())
+    return { ...state, checklists: [...state.checklists, root] }
+  }
   const folder = requireFolder(state, input.folderId)
   if (input.sectionId !== undefined && input.sectionId !== folder.sectionId) {
     throw new Error('Checklist sectionId must match its folder\'s section.')
@@ -245,7 +254,9 @@ const CHECKLIST_PATCH_FIELDS = ['title', 'defaultAmount', 'transactionType', 'fr
 // transactions and Saving Area entry snapshots are left exactly as they are.
 export function updateChecklistTemplate(state, checklistId, patch) {
   const checklist = requireChecklist(state, checklistId)
-  const folder = requireFolder(state, checklist.folderId)
+  const folder = checklist.folderId
+    ? requireFolder(state, checklist.folderId)
+    : { id: null, sectionId: checklist.sectionId, usage: checklist.frequency }
   const next = { ...checklist }
   for (const key of CHECKLIST_PATCH_FIELDS) {
     if (patch && Object.hasOwn(patch, key)) next[key] = patch[key]

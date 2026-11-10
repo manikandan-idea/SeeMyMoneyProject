@@ -61,8 +61,8 @@ function App() {
       updateFolder: (id, patch) => run((s) => updateFolder(s, id, patch)),
       setFolderHidden: (id, hidden) => run((s) => setFolderHidden(s, id, hidden)),
       duplicateFolder: (id) => run((s) => duplicateFolderStructure(s, id)),
-      createChecklist: ({ folderId, title, defaultAmount }) =>
-        run((s) => createChecklistTemplate(s, { sectionId, folderId, title, defaultAmount })),
+      createChecklist: ({ folderId, title, defaultAmount, transactionType }) =>
+        run((s) => createChecklistTemplate(s, { sectionId, folderId, title, defaultAmount, transactionType })),
       updateChecklist: (id, patch) => run((s) => updateChecklistTemplate(s, id, patch)),
       // Removes ONLY the reusable template. Transactions are never touched.
       deleteChecklist: (id) => run((s) => deleteChecklistTemplate(s, id)),
@@ -117,6 +117,21 @@ function App() {
     }
   }, [view, run])
 
+  // Callbacks for the Checklist section on period pages (checklists may sit
+  // directly on the page, with no folder).
+  const pageActions = {
+    record: (checklistId, amount, source) =>
+      run((s) => {
+        const c = s.checklists.find((x) => x.id === checklistId)
+        return createTransaction(s, {
+          sectionId: c.sectionId, folderId: c.folderId ?? null, checklistId, amount, source,
+        })
+      }),
+    updateChecklist: (id, patch) => run((s) => updateChecklistTemplate(s, id, patch)),
+    deleteChecklist: (id) => run((s) => deleteChecklistTemplate(s, id)),
+    createChecklist: (input) => run((s) => createChecklistTemplate(s, { ...input, folderId: null })),
+  }
+
   const header = (
     <Header
       current={view.name}
@@ -155,9 +170,12 @@ function App() {
   // Direct totals for an opened folder / folder card; recursive for the section root
   // (matches the original totalOf vs directTotalOf convention).
   const getTotals = (sectionId, folderId) => {
-    if (!folderId) return calculateSectionTotals(state, sectionId)
+    if (!folderId) {
+      const r = calculateSectionTotals(state, sectionId)
+      return { total: r.total, count: r.count }
+    }
     const t = calculateFolderTotals(state, folderId)
-    return { total: t[sectionId], count: t.count }
+    return { total: t[sectionId], count: t.count, income: t.income, expense: t.expense, saving: t.saving }
   }
 
   let body
@@ -215,10 +233,7 @@ function App() {
         onAddFolder={({ name, sectionId, usage, frequency }) =>
           run((s) => createFolder(s, { sectionId, parentFolderId: null, name, usage, frequency, othersEnabled: false }))
         }
-        onRecord={({ folderId, checklistId, sectionId }) =>
-          run((s) => createTransaction(s, { sectionId, folderId, checklistId, source: 'checklist',
-            amount: s.checklists.find((c) => c.id === checklistId)?.defaultAmount }))
-        }
+        actions={pageActions}
       />
     )
   }

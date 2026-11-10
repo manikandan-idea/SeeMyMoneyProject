@@ -5,7 +5,7 @@
 //   ✏️             edit the reusable default (future uses)     -> onUpdateDefault(checklistId, amount)
 //   🐖             add this checklist to the folder's Saving Area -> onAddToSavingArea(checklistId)
 // Deleting a checklist lives inside the ✏️ dialog and removes ONLY the template.
-// "Add Checklist" creates a new reusable checklist -> onAdd(title, defaultAmount).
+// "Add Checklist" creates a new reusable checklist -> onAdd(title, defaultAmount, type). Type defaults to `defaultType` (Spend).
 
 import { useEffect, useState } from 'react'
 import { formatINR } from '../utils/format.js'
@@ -26,10 +26,12 @@ function ChecklistPanel({
   onDelete,
   onAdd,
   onAddToSavingArea,
+  defaultType = 'expense',
 }) {
   const [dialog, setDialog] = useState(null) // { kind: 'other' | 'default' | 'add', row? }
   const [amount, setAmount] = useState('')
   const [title, setTitle] = useState('')
+  const [type, setType] = useState(defaultType)
   const [error, setError] = useState('')
 
   const open = dialog !== null
@@ -55,6 +57,7 @@ function ChecklistPanel({
     setDialog({ kind, row })
     setAmount(row ? String(row.defaultAmount) : '')
     setTitle('')
+    setType(defaultType)
     setError('')
   }
 
@@ -71,7 +74,7 @@ function ChecklistPanel({
     }
     if (dialog.kind === 'other') onRecordOther(dialog.row.id, value)
     else if (dialog.kind === 'default') onUpdateDefault(dialog.row.id, value)
-    else onAdd(title.trim(), value)
+    else onAdd(title.trim(), value, type)
     close()
   }
 
@@ -190,6 +193,16 @@ function ChecklistPanel({
                   placeholder="e.g. Tea"
                   autoFocus
                 />
+              </label>
+            )}
+            {dialog.kind === 'add' && (
+              <label className="field">
+                Type
+                <select value={type} onChange={(event) => setType(event.target.value)}>
+                  <option value="expense">Spend</option>
+                  <option value="income">Received</option>
+                  <option value="saving">Savings</option>
+                </select>
               </label>
             )}
             <label className="field">

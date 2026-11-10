@@ -51,3 +51,10 @@ Acceptance checks 3–11 are covered by the pure-function tests in `tests/integr
 - Header: brand → Today; History and Hidden kept; the Summary button and the old three-tile dashboard were removed from navigation (files still in the repo, unused).
 - Not done / open: page-level "Add Checklist" (data model needs a folder for every checklist); **Settled Items** is a placeholder (rules undecided); Infrequent vs Occasional (5 vs 6 tabs) undecided; auto-submit/finalisation not implemented; History kept only because deleting a single record needs it.
 - Checks: `npm test` 95/95 pass; esbuild bundle OK; server-render of all five tabs OK. Lint, Vite build and browser use still NOT VERIFIED.
+
+## Update 2: folder and checklist behaviour (from PROJECT_MASTER_CONTEXT.md)
+- **Checklist on a page, no folder**: a checklist can now sit directly on Today / This Month / This Year (`folderId: null`). One data-contract change: `schema.js` accepts `checklist.folderId === null`; `createChecklistTemplate` / `updateChecklistTemplate` handle it (its section follows its type). Records, Other, default edit, delete and usage count reuse `ChecklistPanel` (same behaviour as inside a folder; delete still removes only the template).
+- **Checklist creation**: Description + Amount, plus Type (Spend / Received / Savings). On a page the default is Spend; inside a folder the default is that folder's type. Frequency is never asked: it comes from the page (Today = daily, This Month = monthly, This Year = yearly).
+- **Folder view**: shows three boxes Spend / Received / Savings (direct totals of that folder, nested folders excluded), "← Back", Checklist section and nested Folders together.
+- Tests: 96/96 pass (new: page-level checklist). esbuild bundle OK; five tabs server-render OK. Lint, Vite build, browser NOT VERIFIED.
+- Still open: Settled Items content, Infrequent vs Occasional, nested-folder roll-up, auto-submit.

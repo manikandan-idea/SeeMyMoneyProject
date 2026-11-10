@@ -103,3 +103,20 @@ test('hide/restore keeps transactions and totals; sections stay separate', () =>
   const sum = ['income', 'expense', 'saving'].map((id) => calculateSectionTotals(s, id).total)
   assert.equal(t0.income, sum[0]); assert.equal(t0.expense, sum[1]); assert.equal(t0.saving, sum[2])
 })
+
+test('checklist directly on a page (no folder): create, record, edit default, delete keeps history', async () => {
+  const { createChecklistTemplate } = await import('../src/domain/folderChecklist.js')
+  let s = createChecklistTemplate(base(), { title: 'Milk', defaultAmount: 30, transactionType: 'expense', frequency: 'daily', folderId: null })
+  assertValidAppState(s)
+  const c = s.checklists[s.checklists.length - 1]
+  assert.equal(c.folderId, null)
+  assert.equal(c.sectionId, 'expense')
+  assert.equal(c.frequency, 'daily')
+  s = createTransaction(s, { sectionId: c.sectionId, folderId: null, checklistId: c.id, amount: 30, source: 'checklist' })
+  s = createTransaction(s, { sectionId: c.sectionId, folderId: null, checklistId: c.id, amount: 45, source: 'checklist-other' })
+  assert.equal(getChecklistUsageCount(s, c.id), 2)
+  s = updateChecklistTemplate(s, c.id, { defaultAmount: 35 })
+  assert.deepEqual(s.transactions.filter((t) => t.checklistId === c.id).map((t) => t.amount), [30, 45])
+  const after = deleteChecklistTemplate(s, c.id)
+  assert.equal(after.transactions.filter((t) => t.checklistId === c.id).length, 2)
+})
