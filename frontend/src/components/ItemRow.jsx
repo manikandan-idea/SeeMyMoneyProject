@@ -1,4 +1,5 @@
-// One money entry: description + details + date&time, amount on the right.
+// One money record (Transaction): description + date&time, amount on the right.
+// Display only — deleting/editing a record belongs to Record History.
 
 import { formatINR, formatDateTime } from '../utils/format.js'
 
@@ -12,6 +13,8 @@ function ItemRow({ item }) {
         )}
         <div className="item-row__date">
           {formatDateTime(item.recordedAt)}
+          {item.source === 'checklist-other' ? ' · one-time amount' : ''}
+          {item.source === 'folder-one-time' ? ' · one-time folder amount' : ''}
           {item.from ? ` · from “${item.from}”` : ''}
         </div>
       </div>

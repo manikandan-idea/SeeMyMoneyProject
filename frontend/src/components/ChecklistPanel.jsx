@@ -1,214 +1,226 @@
-// Regular-money checklist panel for the current folder.
-// Each row: static title + default amount (editable), and a ＋ icon that
-// records the row's money again right now (with date & time).
-// The ✏️ Edit modal lets the user add or delete rows and change amounts.
+// Reusable checklist panel for the OPEN folder.
+// Row controls (all optional-callback driven; this component stores no money):
+//   ＋ ₹<default>  record once at the default amount          -> onRecord(checklistId)
+//   Other          one-time amount, default NOT changed       -> onRecordOther(checklistId, amount)
+//   ✏️             edit the reusable default (future uses)     -> onUpdateDefault(checklistId, amount)
+//   🐖             add this checklist to the folder's Saving Area -> onAddToSavingArea(checklistId)
+// Deleting a checklist lives inside the ✏️ dialog and removes ONLY the template.
+// "Add Checklist" creates a new reusable checklist -> onAdd(title, defaultAmount).
 
 import { useEffect, useState } from 'react'
-import { formatINR, formatDateTime } from '../utils/format.js'
+import { formatINR } from '../utils/format.js'
+import './folders.css'
 
-function ChecklistPanel({ rows, onRecord, onSaveRowAmount, onDeleteRow, onAddRow }) {
-  const [recording, setRecording] = useState(null) // row being recorded
+function parseAmount(text) {
+  const value = Number(text)
+  return Number.isFinite(value) && value > 0 ? value : null
+}
+
+function ChecklistPanel({
+  rows,
+  getUsageCount,
+  canAddToSavingArea = true,
+  onRecord,
+  onRecordOther,
+  onUpdateDefault,
+  onDelete,
+  onAdd,
+  onAddToSavingArea,
+}) {
+  const [dialog, setDialog] = useState(null) // { kind: 'other' | 'default' | 'add', row? }
   const [amount, setAmount] = useState('')
-  const [editing, setEditing] = useState(false)
-  const [newTitle, setNewTitle] = useState('')
-  const [newAmount, setNewAmount] = useState('')
-  const [recordError, setRecordError] = useState('')
-  const [editError, setEditError] = useState('')
+  const [title, setTitle] = useState('')
+  const [error, setError] = useState('')
 
-  // Press Escape to close whichever modal is open
-  const anyModalOpen = recording !== null || editing
+  const open = dialog !== null
+  function close() {
+    setDialog(null)
+    setError('')
+  }
+
+  // Escape closes the dialog
   useEffect(() => {
-    if (!anyModalOpen) return undefined
+    if (!open) return undefined
     function onKeyDown(event) {
       if (event.key === 'Escape') {
-        setRecording(null)
-        setEditing(false)
-        setRecordError('')
-        setEditError('')
+        setDialog(null)
+        setError('')
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [anyModalOpen])
+  }, [open])
 
-  function openRecord(row) {
-    setRecording(row)
-    setAmount(String(row.amount)) // pre-filled with the default amount
-    setRecordError('')
+  function openDialog(kind, row) {
+    setDialog({ kind, row })
+    setAmount(row ? String(row.defaultAmount) : '')
+    setTitle('')
+    setError('')
   }
 
-  function confirmRecord(event) {
+  function submit(event) {
     event.preventDefault()
-    if (!recording) return
-    const value = Number(amount)
-    if (!Number.isFinite(value) || value <= 0) {
-      setRecordError('Please enter an amount greater than 0.')
+    const value = parseAmount(amount)
+    if (dialog.kind === 'add' && !title.trim()) {
+      setError('Please enter a checklist title.')
       return
     }
-    onRecord(recording.id, value)
-    setRecording(null)
-    setRecordError('')
+    if (value === null) {
+      setError('Please enter an amount greater than 0.')
+      return
+    }
+    if (dialog.kind === 'other') onRecordOther(dialog.row.id, value)
+    else if (dialog.kind === 'default') onUpdateDefault(dialog.row.id, value)
+    else onAdd(title.trim(), value)
+    close()
   }
 
-  function submitNewRow(event) {
-    event.preventDefault()
-    const value = Number(newAmount)
-    if (!newTitle.trim()) {
-      setEditError('Please enter a title for the new row.')
-      return
-    }
-    if (!Number.isFinite(value) || value <= 0) {
-      setEditError('Please enter a default amount greater than 0.')
-      return
-    }
-    setEditError('')
-    onAddRow(newTitle.trim(), value)
-    setNewTitle('')
-    setNewAmount('')
+  function confirmDelete() {
+    const row = dialog.row
+    const ok = window.confirm(
+      `Delete the checklist “${row.title}”? Only the reusable checklist is removed — everything already recorded stays in History.`,
+    )
+    if (!ok) return
+    onDelete(row.id)
+    close()
   }
+
+  const heading =
+    dialog?.kind === 'other'
+      ? `Other amount: ${dialog.row.title}`
+      : dialog?.kind === 'default'
+        ? `Default amount: ${dialog.row.title}`
+        : 'Add Checklist'
 
   return (
     <div className="checklist">
       <div className="checklist__head">
         <h3 className="checklist__title">📋 Regular checklist</h3>
-        <button
-          type="button"
-          className="btn btn--ghost btn--sm"
-          onClick={() => {
-            setEditing(true)
-            setEditError('')
-          }}
-        >
-          ✏️ Edit
+        <button type="button" className="btn btn--accent btn--sm" onClick={() => openDialog('add')}>
+          + Add Checklist
         </button>
       </div>
 
-      {rows.map((row) => (
-        <div key={row.id} className="checklist__row">
-          <div className="checklist__info">
-            <span className="checklist__name">{row.title}</span>
-            <span className="checklist__meta">
-              default {formatINR(row.amount)}
-              {row.timesRecorded > 0
-                ? ` · recorded ${row.timesRecorded}× · last ${formatDateTime(row.lastRecorded.at)}`
-                : ' · not recorded yet'}
-            </span>
-          </div>
-          <button
-            type="button"
-            className="checklist__add"
-            title="Record this row again (amount editable)"
-            onClick={() => openRecord(row)}
-          >
-            ＋
-          </button>
-        </div>
-      ))}
+      {rows.length === 0 && (
+        <p className="other-panel__empty">No checklists in this folder yet — use “Add Checklist”.</p>
+      )}
 
-      {recording && (
-        <div className="modal-backdrop" onClick={() => setRecording(null)}>
+      {rows.map((row) => {
+        const used = getUsageCount ? getUsageCount(row.id) : null
+        return (
+          <div key={row.id} className="checklist__row">
+            <div className="checklist__info">
+              <span className="checklist__name">{row.title}</span>
+              <span className="checklist__meta">
+                default {formatINR(row.defaultAmount)}
+                {used === null ? '' : used > 0 ? ` · used ${used}×` : ' · not used yet'}
+              </span>
+            </div>
+            <div className="row-actions">
+              <button
+                type="button"
+                className="pill pill--primary"
+                title={`Record ${row.title} at the default amount`}
+                aria-label={`Record ${row.title} for ${formatINR(row.defaultAmount)}`}
+                onClick={() => onRecord(row.id)}
+              >
+                ＋ {formatINR(row.defaultAmount)}
+              </button>
+              <button
+                type="button"
+                className="pill"
+                title="Record a different amount once (the default stays)"
+                aria-label={`Other amount for ${row.title}`}
+                onClick={() => openDialog('other', row)}
+              >
+                Other
+              </button>
+              <button
+                type="button"
+                className="pill pill--icon"
+                title="Edit the reusable default amount (future records only)"
+                aria-label={`Edit default amount for ${row.title}`}
+                onClick={() => openDialog('default', row)}
+              >
+                ✏️
+              </button>
+              {canAddToSavingArea && (
+                <button
+                  type="button"
+                  className="pill pill--icon"
+                  title="Add to this folder's Saving Area"
+                  aria-label={`Add ${row.title} to Saving Area`}
+                  onClick={() => onAddToSavingArea(row.id)}
+                >
+                  🐖
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      })}
+
+      {open && (
+        <div className="modal-backdrop" onClick={close}>
           <form
             className="modal"
             role="dialog"
             aria-modal="true"
-            aria-label={`Record ${recording.title}`}
+            aria-label={heading}
             onClick={(e) => e.stopPropagation()}
-            onSubmit={confirmRecord}
+            onSubmit={submit}
           >
-            <h3>Record: {recording.title}</h3>
-            {recordError && <p className="form-error">⚠️ {recordError}</p>}
-            <p className="modal__hint">
-              Date &amp; time are stamped automatically: {formatDateTime(new Date().toISOString())}
-            </p>
+            <h3>{heading}</h3>
+            {error && <p className="form-error">⚠️ {error}</p>}
+            {dialog.kind === 'other' && (
+              <p className="modal__hint">One-time amount. The checklist’s default stays {formatINR(dialog.row.defaultAmount)}.</p>
+            )}
+            {dialog.kind === 'default' && (
+              <p className="modal__hint">Changes future records only — past records keep their amounts.</p>
+            )}
+            {dialog.kind === 'add' && (
+              <label className="field">
+                Title
+                <input
+                  value={title}
+                  onChange={(event) => {
+                    setTitle(event.target.value)
+                    setError('')
+                  }}
+                  placeholder="e.g. Tea"
+                  autoFocus
+                />
+              </label>
+            )}
             <label className="field">
-              Amount (₹) — editable
+              {dialog.kind === 'add' ? 'Default amount (₹)' : 'Amount (₹)'}
               <input
                 type="number"
                 min="0"
                 step="0.01"
+                inputMode="decimal"
                 value={amount}
                 onChange={(event) => {
                   setAmount(event.target.value)
-                  setRecordError('')
+                  setError('')
                 }}
-                autoFocus
+                autoFocus={dialog.kind !== 'add'}
               />
             </label>
             <div className="modal__actions">
-              <button type="button" className="btn btn--ghost" onClick={() => setRecording(null)}>
+              {dialog.kind === 'default' && (
+                <button type="button" className="btn btn--danger" onClick={confirmDelete}>
+                  🗑 Delete checklist
+                </button>
+              )}
+              <button type="button" className="btn btn--ghost" onClick={close}>
                 Cancel
               </button>
-              <button type="submit" className="btn btn--accent">Record</button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {editing && (
-        <div className="modal-backdrop" onClick={() => setEditing(false)}>
-          <div
-            className="modal modal--wide"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Edit checklist"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3>Edit checklist</h3>
-            {editError && <p className="form-error">⚠️ {editError}</p>}
-            <p className="modal__hint">Title is fixed; amounts are editable. Rows can be added or deleted.</p>
-
-            {rows.length === 0 && <p className="modal__hint">No checklist rows yet — add one below.</p>}
-
-            {rows.map((row) => (
-              <div key={row.id} className="edit-row">
-                <span className="edit-row__title">{row.title}</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={row.amount}
-                  onChange={(event) => onSaveRowAmount(row.id, Number(event.target.value))}
-                />
-                <button
-                  type="button"
-                  className="edit-row__delete"
-                  title="Delete this row"
-                  onClick={() => onDeleteRow(row.id)}
-                >
-                  🗑
-                </button>
-              </div>
-            ))}
-
-            <form className="edit-row edit-row--new" onSubmit={submitNewRow}>
-              <input
-                placeholder="New title (e.g. Rent)"
-                value={newTitle}
-                onChange={(event) => {
-                  setNewTitle(event.target.value)
-                  setEditError('')
-                }}
-              />
-              <input
-                type="number"
-                placeholder="Default ₹"
-                min="0"
-                step="0.01"
-                value={newAmount}
-                onChange={(event) => {
-                  setNewAmount(event.target.value)
-                  setEditError('')
-                }}
-              />
-              <button type="submit" className="btn btn--accent btn--sm">＋ Add</button>
-            </form>
-
-            <div className="modal__actions">
-              <button type="button" className="btn btn--ghost" onClick={() => setEditing(false)}>
-                Done
+              <button type="submit" className="btn btn--accent">
+                {dialog.kind === 'other' ? 'Record' : dialog.kind === 'add' ? 'Add' : 'Save'}
               </button>
             </div>
-          </div>
+          </form>
         </div>
       )}
     </div>

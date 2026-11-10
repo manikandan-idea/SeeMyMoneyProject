@@ -1,7 +1,9 @@
 // "New folder" modal.
 // The user declares: name, Daily vs Occasional usage, (if Occasional)
 // one-time vs multiple-use, optional "Other" row, optional checklist
-// builder (rows = fixed title + default amount).
+// builder (rows = reusable title + default amount).
+// onConfirm({ name, usage, frequency, othersEnabled, checklist: [{ title, defaultAmount }] })
+// Checklist frequency is NOT asked: it follows the folder's usage (domain rule).
 
 import { useEffect, useState } from 'react'
 
@@ -44,7 +46,7 @@ function AddFolderForm({ onConfirm, onCancel }) {
   function addRow() {
     const value = Number(rowAmount)
     if (!rowTitle.trim() || !Number.isFinite(value) || value <= 0) return
-    setRows([...rows, { title: rowTitle.trim(), amount: value }])
+    setRows([...rows, { title: rowTitle.trim(), defaultAmount: value }])
     setRowTitle('')
     setRowAmount('')
   }
@@ -94,6 +96,7 @@ function AddFolderForm({ onConfirm, onCancel }) {
         <label className="field">
           Folder name
           <input
+            name="folderName"
             value={name}
             onChange={(event) => updateName(event.target.value)}
             placeholder="e.g. Daily Tea & Auto"
@@ -186,12 +189,12 @@ function AddFolderForm({ onConfirm, onCancel }) {
         {wantChecklist && (
           <div className="row-builder">
             <p className="modal__hint">
-              Rows have a fixed title + default amount (editable later, recorded with the ＋ icon).
+              Each reusable checklist has a title + default amount (default editable later).
             </p>
             {rows.map((row, index) => (
               <div key={`${row.title}-${index}`} className="row-builder__row">
                 <span className="row-builder__summary">
-                  {row.title} — ₹{row.amount}
+                  {row.title} — ₹{row.defaultAmount}
                 </span>
                 <button type="button" onClick={() => removeRow(index)} title="Remove row">
                   🗑
