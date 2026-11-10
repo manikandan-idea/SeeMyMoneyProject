@@ -30,10 +30,14 @@ import { calculateSectionTotals, calculateFolderTotals } from './domain/analytic
 import './App.css'
 
 const SECTION_META = [
-  { id: 'income', title: 'Income', icon: '💰' },
-  { id: 'expense', title: 'Expense', icon: '💸' },
-  { id: 'saving', title: 'Saving', icon: '🐖' },
+  { id: 'income', title: 'Received', icon: '💰' },
+  { id: 'expense', title: 'Spend', icon: '💸' },
+  { id: 'saving', title: 'Savings', icon: '🐖' },
 ]
+
+const TAB_NAMES = {
+  today: 'Today', month: 'This Month', year: 'This Year', infrequent: 'Infrequent Items', settled: 'Settled Items',
+}
 
 function App() {
   const { state, status, error, commit, reload, dismissError } = useAppStore()
@@ -127,6 +131,7 @@ function App() {
           sectionId: c.sectionId, folderId: c.folderId ?? null, checklistId, amount, source,
         })
       }),
+    addSavingAreaEntry: (input) => run((s) => addSavingAreaEntry(s, input)),
     updateChecklist: (id, patch) => run((s) => updateChecklistTemplate(s, id, patch)),
     deleteChecklist: (id) => run((s) => deleteChecklistTemplate(s, id)),
     createChecklist: (input) => run((s) => createChecklistTemplate(s, { ...input, folderId: null })),
@@ -189,6 +194,7 @@ function App() {
         sectionIcon={meta.icon}
         state={state}
         initialFolderId={view.folderId}
+        rootName={view.folderId ? TAB_NAMES[view.returnTab] || 'Today' : null}
         onBack={goHome}
         actions={sectionActions}
         getUsageCount={(id) => getChecklistUsageCount(state, id)}

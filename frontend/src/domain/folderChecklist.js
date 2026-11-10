@@ -13,6 +13,15 @@ const OCCASIONAL_FREQUENCIES = ['once', 'multiple']
 const CHECKLIST_FREQUENCIES = ['daily', 'monthly', 'yearly']
 const SAVING_SOURCE_TYPES = ['checklist', 'folder']
 
+// Every period page (Today / This Month / This Year / Infrequent Items) is treated
+// as a folder, so it can own a Saving Area too. These ids are "virtual page folders":
+// they are not stored in `folders`, only used as `ownerFolderId`.
+export const PAGE_OWNER_IDS = ['page:daily', 'page:monthly', 'page:yearly', 'page:occasional']
+export const isPageOwner = (id) => PAGE_OWNER_IDS.includes(id)
+export function pageOwnerId(usage) {
+  return `page:${usage}`
+}
+
 // ---------- small helpers ----------
 
 export function makeId() {
@@ -285,8 +294,9 @@ export function deleteChecklistTemplate(state, checklistId) {
 // folder is not changed. Repeated adds make separate rows (never a counter).
 // Not a transaction — `transactions` is never touched.
 export function addSavingAreaEntry(state, input) {
-  const owner = requireFolder(state, input.ownerFolderId)
-  if (input.sectionId !== undefined && input.sectionId !== owner.sectionId) {
+  const pageOwned = isPageOwner(input.ownerFolderId)
+  const owner = pageOwned ? { id: input.ownerFolderId, sectionId: null } : requireFolder(state, input.ownerFolderId)
+  if (!pageOwned && input.sectionId !== undefined && input.sectionId !== owner.sectionId) {
     throw new Error('Saving Area entry sectionId must match the owner folder\'s section.')
   }
   if (!SAVING_SOURCE_TYPES.includes(input.sourceType)) {
@@ -295,12 +305,14 @@ export function addSavingAreaEntry(state, input) {
   let titleSnapshot
   if (input.sourceType === 'checklist') {
     const source = requireChecklist(state, input.sourceId)
-    if (source.sectionId !== owner.sectionId) throw new Error('Source must be in the same section.')
+    if (!pageOwned && source.sectionId !== owner.sectionId) throw new Error('Source must be in the same section.')
+    if (pageOwned) owner.sectionId = source.sectionId
     titleSnapshot = source.title
   } else {
     const source = requireFolder(state, input.sourceId)
     if (source.id === owner.id) throw new Error('A folder cannot be added to its own Saving Area.')
-    if (source.sectionId !== owner.sectionId) throw new Error('Source must be in the same section.')
+    if (!pageOwned && source.sectionId !== owner.sectionId) throw new Error('Source must be in the same section.')
+    if (pageOwned) owner.sectionId = source.sectionId
     titleSnapshot = source.name
   }
   const entry = {
@@ -323,10 +335,10 @@ export function addSavingAreaEntry(state, input) {
 // Which folder is the "next period" target is a UI/workflow decision that is
 // not defined yet — see HANDOFF.md.
 export function settleSavingAreaEntries(state, { sourceFolderId, targetFolderId }) {
-  const target = requireFolder(state, targetFolderId)
+  const target = isPageOwner(targetFolderId) ? { id: targetFolderId, sectionId: null } : requireFolder(state, targetFolderId)
   if (sourceFolderId === targetFolderId) return state
   const source = state.folders.find((f) => f.id === sourceFolderId)
-  if (source && source.sectionId !== target.sectionId) {
+  if (source && target.sectionId && source.sectionId !== target.sectionId) {
     throw new Error('Settlement target must be in the same section as the source folder.')
   }
   if (!state.savingAreaEntries.some((e) => e.ownerFolderId === sourceFolderId)) return state

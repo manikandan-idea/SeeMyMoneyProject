@@ -8,12 +8,15 @@
 //   onTab(tab)
 //   onOpenFolder(folder)                 open that folder's view (same folder, not a copy)
 //   onAddFolder({ name, sectionId, usage, frequency })
+//   actions.addSavingAreaEntry({ ownerFolderId, sourceType, sourceId })
 //   actions = { record(checklistId, amount, source), updateChecklist(id, patch),
 //               deleteChecklist(id), createChecklist({ title, defaultAmount, transactionType, frequency }) }
 
 import { useEffect, useMemo, useState } from 'react'
 import { formatINR } from '../../utils/format.js'
 import ChecklistPanel from '../ChecklistPanel.jsx'
+import SavingArea from '../SavingArea.jsx'
+import { pageOwnerId } from '../../domain/folderChecklist.js'
 import { getChecklistUsageCount } from '../../domain/records.js'
 import { calculatePeriodTotals, calculateFolderTotals, getPeriodRange } from '../../domain/analytics.js'
 
@@ -202,6 +205,18 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, actio
             )}
           </section>
         </>
+      )}
+
+      {tab.usage && (
+        <SavingArea
+          entries={state.savingAreaEntries.filter((e) => e.ownerFolderId === pageOwnerId(tab.usage))}
+          choices={{
+            checklists: tab.usage === 'occasional' ? [] : view.checklists,
+            folders: view.folders,
+          }}
+          onAdd={({ sourceType, sourceId }) =>
+            actions.addSavingAreaEntry({ ownerFolderId: pageOwnerId(tab.usage), sourceType, sourceId })}
+        />
       )}
 
       {adding && (

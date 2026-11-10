@@ -100,7 +100,7 @@ function ChecklistPanel({
       <div className="checklist__head">
         <h3 className="checklist__title">📋 Regular checklist</h3>
         <button type="button" className="btn btn--accent btn--sm" onClick={() => openDialog('add')}>
-          + Add Checklist
+          Add Checklist
         </button>
       </div>
 

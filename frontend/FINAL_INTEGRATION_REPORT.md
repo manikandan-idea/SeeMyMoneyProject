@@ -58,3 +58,9 @@ Acceptance checks 3–11 are covered by the pure-function tests in `tests/integr
 - **Folder view**: shows three boxes Spend / Received / Savings (direct totals of that folder, nested folders excluded), "← Back", Checklist section and nested Folders together.
 - Tests: 96/96 pass (new: page-level checklist). esbuild bundle OK; five tabs server-render OK. Lint, Vite build, browser NOT VERIFIED.
 - Still open: Settled Items content, Infrequent vs Occasional, nested-folder roll-up, auto-submit.
+
+## Update 3: Saving Area on every folder and every page; wording; fixes
+- **Saving Area everywhere**: new `src/components/SavingArea.jsx` (always visible, `+ Add Items` picker, grouped list ×count). Shown in every opened folder and on Today / This Month / This Year / Infrequent Items. A period page is treated as a folder through virtual owners `page:daily`, `page:monthly`, `page:yearly`, `page:occasional` (`PAGE_OWNER_IDS`, `pageOwnerId()` in `folderChecklist.js`); these are not stored folders, only the `ownerFolderId` of entries. Entries are still separate rows, never money; settlement can move page entries (`settleSavingAreaEntries`) with IDs kept.
+- **Wording from the master file**: Spend / Received / Savings everywhere (boxes, History filter and badges, Hidden page, folder breadcrumb), `Add Folder`, `Add Checklist`, `← Back`.
+- **Fixes**: opening a folder from a page now has that page as the top of the breadcrumb (not the old Income/Expense list); if the folder disappears (hidden) you are returned to the page.
+- Tests 97/97 pass (new: Saving Area on folder + page). esbuild bundle OK; all tabs render with Saving Area. Lint, Vite build, browser NOT VERIFIED.

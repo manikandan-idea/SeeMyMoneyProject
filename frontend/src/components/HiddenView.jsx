@@ -19,14 +19,14 @@ function usageLabel(folder) {
 }
 
 function HiddenView({ state, onBack, onRestore, getFolderTotals }) {
-  const titleOf = (id) => state.sections.find((s) => s.id === id)?.title ?? id
+  const titleOf = (id) => ({ income: 'Received', expense: 'Spend', saving: 'Savings' })[id] ?? id
   const entries = selectHiddenFolders(state)
 
   return (
     <main className="section">
       <div className="section__toolbar">
         <button type="button" className="btn btn--ghost" onClick={onBack}>
-          ← Dashboard
+          ← Back
         </button>
         <h2 className="section__title">🙈 Hidden folders</h2>
       </div>

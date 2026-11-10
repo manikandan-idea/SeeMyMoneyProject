@@ -2,7 +2,7 @@
 
 import { formatINR, formatDateTime } from '../../utils/format.js'
 
-const TYPE_LABEL = { income: 'Income', expense: 'Expense', saving: 'Saving' }
+const TYPE_LABEL = { income: 'Received', expense: 'Spend', saving: 'Savings' }
 
 function RecordRow({ record, showTitle = true, onEdit, onDelete }) {
   const place = [record.folderNameSnapshot, record.checklistTitleSnapshot && record.checklistTitleSnapshot !== record.description ? record.checklistTitleSnapshot : null]

@@ -120,3 +120,22 @@ test('checklist directly on a page (no folder): create, record, edit default, de
   const after = deleteChecklistTemplate(s, c.id)
   assert.equal(after.transactions.filter((t) => t.checklistId === c.id).length, 2)
 })
+
+test('every folder and every period page has a Saving Area (entries, not money)', async () => {
+  const { addSavingAreaEntry, settleSavingAreaEntries, pageOwnerId } = await import('../src/domain/folderChecklist.js')
+  let s = base()
+  const c = tea(s)
+  const money = JSON.stringify(calculatePeriodTotals(s, {}))
+  // inside a folder
+  s = addSavingAreaEntry(s, { ownerFolderId: c.folderId, sourceType: 'checklist', sourceId: c.id })
+  // on a period page (page = virtual folder)
+  s = addSavingAreaEntry(s, { ownerFolderId: pageOwnerId('daily'), sourceType: 'checklist', sourceId: c.id })
+  s = addSavingAreaEntry(s, { ownerFolderId: pageOwnerId('daily'), sourceType: 'folder', sourceId: c.folderId })
+  assertValidAppState(s)
+  assert.equal(s.savingAreaEntries.filter((e) => e.ownerFolderId === 'page:daily').length, 2)
+  assert.equal(JSON.stringify(calculatePeriodTotals(s, {})), money)
+  assert.ok(s.checklists.some((x) => x.id === c.id))
+  const ids = s.savingAreaEntries.filter((e) => e.ownerFolderId === 'page:daily').map((e) => e.id)
+  const moved = settleSavingAreaEntries(s, { sourceFolderId: 'page:daily', targetFolderId: 'page:monthly' })
+  assert.deepEqual(moved.savingAreaEntries.filter((e) => e.ownerFolderId === 'page:monthly').map((e) => e.id), ids)
+})

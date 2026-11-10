@@ -8,6 +8,7 @@
 //   onBack()
 //   getUsageCount(checklistId) -> number          optional (Developer 3)
 //   getFolderRecords(folderId|null) -> Transaction[]  optional; null = section root
+//   rootName             optional; name of the period page the folder was opened from
 //   initialFolderId      optional; open this folder first (period pages)
 //   getTotals(folderId|null) -> { total, count }  optional (Developer 4); null = section
 //   actions = {
@@ -32,8 +33,9 @@ import ItemRow from './ItemRow.jsx'
 import AddForm from './AddForm.jsx'
 import AddFolderForm from './AddFolderForm.jsx'
 import ChecklistPanel from './ChecklistPanel.jsx'
+import SavingArea from './SavingArea.jsx'
 import OtherPanel from './OtherPanel.jsx'
-import { selectFolderTree, groupSavingAreaEntries } from '../domain/folderChecklist.js'
+import { selectFolderTree } from '../domain/folderChecklist.js'
 import { formatINR } from '../utils/format.js'
 import './folders.css'
 
@@ -185,6 +187,7 @@ function RenameDialog({ folder, onSave, onCancel }) {
 function SectionView({
   sectionId,
   sectionTitle,
+  rootName = null,
   sectionIcon,
   state,
   onBack,
@@ -203,7 +206,13 @@ function SectionView({
   const node = currentFolderId ? tree.byId[currentFolderId] ?? null : null
   const folderId = node ? node.id : null
 
-  const crumbs = [{ id: null, name: sectionTitle }]
+  // Opened from a period page but the folder has since gone (e.g. hidden): go back to the page.
+  const missing = Boolean(initialFolderId) && currentFolderId === initialFolderId && !node
+  useEffect(() => {
+    if (missing) onBack()
+  }, [missing, onBack])
+
+  const crumbs = [{ id: null, name: rootName || sectionTitle }]
   if (node) for (const id of node.path) crumbs.push({ id, name: tree.byId[id].name })
   const currentName = crumbs[crumbs.length - 1].name
 
@@ -212,7 +221,6 @@ function SectionView({
   const records = getFolderRecords ? getFolderRecords(folderId) : []
   const others = records.filter((r) => r.source === 'other')
   const items = records.filter((r) => r.source !== 'other')
-  const savingGroups = node ? groupSavingAreaEntries(node.savingAreaEntries) : []
   const totals = getTotals ? getTotals(folderId) : null
 
   const closeModal = () => setModal(null)
@@ -238,11 +246,15 @@ function SectionView({
         </button>
         <Breadcrumb
           crumbs={crumbs}
-          onNavigate={(index) => setCurrentFolderId(index === 0 ? null : crumbs[index].id)}
+          onNavigate={(index) => {
+            // Opened from a period page: that page is the top level, not the old section list.
+            if (index === 0 && rootName) onBack()
+            else setCurrentFolderId(index === 0 ? null : crumbs[index].id)
+          }}
         />
         <div className="section__actions">
           <button type="button" className="btn btn--ghost" onClick={() => setModal('folder')}>
-            + Folder
+            Add Folder
           </button>
           <button type="button" className="btn btn--accent" onClick={() => setModal('entry')}>
             + Entry
@@ -342,25 +354,12 @@ function SectionView({
       )}
 
       {node && (
-        <div className="saving-area">
-          <div className="checklist__head">
-            <h3 className="checklist__title">🐖 Saving Area</h3>
-          </div>
-          {savingGroups.length === 0 ? (
-            <p className="other-panel__empty">
-              Nothing added yet. Use 🐖 on a checklist or “+ Add Items” on an inner folder.
-            </p>
-          ) : (
-            savingGroups.map((group) => (
-              <div key={group.key} className="saving-area__row">
-                <span>
-                  {group.sourceType === 'folder' ? '📁' : '📋'} {group.titleSnapshot}
-                </span>
-                <span className="saving-area__count">×{group.count}</span>
-              </div>
-            ))
-          )}
-        </div>
+        <SavingArea
+          entries={node.savingAreaEntries}
+          choices={{ checklists: checklists, folders: childFolders }}
+          onAdd={({ sourceType, sourceId }) =>
+            actions.addSavingAreaEntry({ ownerFolderId: node.id, sourceType, sourceId })}
+        />
       )}
 
       {node && node.othersEnabled && (

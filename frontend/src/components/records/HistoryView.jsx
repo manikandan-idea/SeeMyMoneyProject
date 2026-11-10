@@ -82,9 +82,9 @@ function HistoryView({ state, onDeleteTransaction, onUpdateTransactionAmount, on
         <input type="search" placeholder="Search description" aria-label="Search description" value={filters.search} onChange={set('search')} />
         <select aria-label="Type" value={filters.transactionType} onChange={set('transactionType')}>
           <option value="">All types</option>
-          <option value="income">Income</option>
-          <option value="expense">Expense</option>
-          <option value="saving">Saving</option>
+          <option value="income">Received</option>
+          <option value="expense">Spend</option>
+          <option value="saving">Savings</option>
         </select>
         <label>From <input type="date" value={filters.fromDate} onChange={set('fromDate')} /></label>
         <label>To <input type="date" value={filters.toDate} onChange={set('toDate')} /></label>

@@ -925,3 +925,4 @@ fieldset.field legend {
 .modal .field { display: grid; gap: 4px; margin: 8px 0; font-size: .9rem; }
 .modal select { padding: 8px; border: 1px solid var(--border); border-radius: 8px; font: inherit; background: #fff; }
 .field__error { color: var(--red); margin: 4px 0; font-size: .85rem; }
+.saving-pick { display: block; width: 100%; text-align: left; margin: 4px 0; }

@@ -2,7 +2,7 @@
 
 import { formatINR, formatDateTime } from '../../utils/format.js'
 
-const TYPE_LABEL = { income: 'Income', expense: 'Expense', saving: 'Saving' }
+const TYPE_LABEL = { income: 'Received', expense: 'Spend', saving: 'Savings' }
 
 function RecentList({ transactions }) {
   if (transactions.length === 0) {
