@@ -44,3 +44,10 @@ Acceptance checks 3–11 are covered by the pure-function tests in `tests/integr
 7. Dev 2 added `+ Edit`, `+ Add Items`, ✏️ and per-row default-amount controls per the contract; please confirm placement.
 8. `public/sw.js` unchanged; it caches the shell only and never touches IndexedDB. Registration now exists in `main.jsx` (production only). Offline-after-first-load is NOT VERIFIED.
 9. Header search box is still display-only.
+
+## Update: period-page layout (from PROJECT_MASTER_CONTEXT.md)
+- App now opens on **Today**. Top tabs: Today, This Month, This Year, Infrequent Items, Settled Items (new `src/components/period/PeriodPage.jsx`).
+- Each page shows three separate boxes: **Spend / Received / Savings** (read from transactions by type and `transactionDate`), a **Checklist** section (templates of that frequency, with one-tap `+ ₹default`) and a **Folders** section (top-level folders of that usage, with Add Folder; opening one shows the same folder in the existing folder view via the new optional `initialFolderId` prop on `SectionView`).
+- Header: brand → Today; History and Hidden kept; the Summary button and the old three-tile dashboard were removed from navigation (files still in the repo, unused).
+- Not done / open: page-level "Add Checklist" (data model needs a folder for every checklist); **Settled Items** is a placeholder (rules undecided); Infrequent vs Occasional (5 vs 6 tabs) undecided; auto-submit/finalisation not implemented; History kept only because deleting a single record needs it.
+- Checks: `npm test` 95/95 pass; esbuild bundle OK; server-render of all five tabs OK. Lint, Vite build and browser use still NOT VERIFIED.

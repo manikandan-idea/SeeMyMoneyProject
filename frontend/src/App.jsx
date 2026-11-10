@@ -1,13 +1,13 @@
 // App root: the ONLY place that wires navigation and callbacks.
 // All data lives in IndexedDB behind useAppStore(); every change goes through commit().
-// Views: dashboard, one section, record history, summary, hidden folders.
+// Views: period pages (Today / This Month / This Year / Infrequent / Settled, opens on Today),
+// an opened folder, record history, hidden folders.
 
 import { useCallback, useMemo, useState } from 'react'
 import Header from './components/Header.jsx'
 import SectionView from './components/SectionView.jsx'
 import HiddenView from './components/HiddenView.jsx'
-import DashboardView from './components/summary/DashboardView.jsx'
-import SummaryView from './components/summary/SummaryView.jsx'
+import PeriodPage from './components/period/PeriodPage.jsx'
 import HistoryView from './components/records/HistoryView.jsx'
 import { useAppStore } from './data/useAppStore.jsx'
 import {
@@ -37,9 +37,12 @@ const SECTION_META = [
 
 function App() {
   const { state, status, error, commit, reload, dismissError } = useAppStore()
-  const [view, setView] = useState({ name: 'dashboard' })
+  const [view, setView] = useState({ name: 'period', tab: 'today' })
 
-  const goDashboard = useCallback(() => setView({ name: 'dashboard' }), [])
+  const goHome = useCallback(
+    () => setView((v) => ({ name: 'period', tab: v.returnTab || (v.name === 'period' ? v.tab : 'today') })),
+    [],
+  )
 
   // Fire-and-forget commit for section UI callbacks. A failed commit leaves the
   // saved state untouched and the store exposes `error`, which we show in a banner.
@@ -117,10 +120,9 @@ function App() {
   const header = (
     <Header
       current={view.name}
-      onDashboard={goDashboard}
-      onShowHistory={() => setView({ name: 'history' })}
-      onShowSummary={() => setView({ name: 'summary' })}
-      onShowHidden={() => setView({ name: 'hidden' })}
+      onDashboard={() => setView({ name: 'period', tab: 'today' })}
+      onShowHistory={() => setView((v) => ({ name: 'history', returnTab: v.name === 'period' ? v.tab : v.returnTab }))}
+      onShowHidden={() => setView((v) => ({ name: 'hidden', returnTab: v.name === 'period' ? v.tab : v.returnTab }))}
     />
   )
 
@@ -163,12 +165,13 @@ function App() {
     const meta = SECTION_META.find((s) => s.id === view.sectionId)
     body = (
       <SectionView
-        key={view.sectionId}
+        key={`${view.sectionId}:${view.folderId}`}
         sectionId={view.sectionId}
         sectionTitle={meta.title}
         sectionIcon={meta.icon}
         state={state}
-        onBack={goDashboard}
+        initialFolderId={view.folderId}
+        onBack={goHome}
         actions={sectionActions}
         getUsageCount={(id) => getChecklistUsageCount(state, id)}
         getFolderRecords={(folderId) =>
@@ -183,18 +186,16 @@ function App() {
     body = (
       <HistoryView
         state={state}
-        onBack={goDashboard}
+        onBack={goHome}
         onDeleteTransaction={(id) => commit((s) => deleteTransaction(s, id))}
         onUpdateTransactionAmount={(id, n) => commit((s) => updateTransactionAmount(s, id, n))}
       />
     )
-  } else if (view.name === 'summary') {
-    body = <SummaryView state={state} onBack={goDashboard} />
   } else if (view.name === 'hidden') {
     body = (
       <HiddenView
         state={state}
-        onBack={goDashboard}
+        onBack={goHome}
         onRestore={(id) => run((s) => setFolderHidden(s, id, false))}
         getFolderTotals={(id) => {
           const folder = state.folders.find((f) => f.id === id)
@@ -204,11 +205,20 @@ function App() {
     )
   } else {
     body = (
-      <DashboardView
+      <PeriodPage
         state={state}
-        onOpenSection={(sectionId) => setView({ name: 'section', sectionId })}
-        onOpenSummary={() => setView({ name: 'summary' })}
-        onOpenHistory={() => setView({ name: 'history' })}
+        tab={view.tab || 'today'}
+        onTab={(tab) => setView({ name: 'period', tab })}
+        onOpenFolder={(folder) =>
+          setView({ name: 'section', sectionId: folder.sectionId, folderId: folder.id, returnTab: view.tab })
+        }
+        onAddFolder={({ name, sectionId, usage, frequency }) =>
+          run((s) => createFolder(s, { sectionId, parentFolderId: null, name, usage, frequency, othersEnabled: false }))
+        }
+        onRecord={({ folderId, checklistId, sectionId }) =>
+          run((s) => createTransaction(s, { sectionId, folderId, checklistId, source: 'checklist',
+            amount: s.checklists.find((c) => c.id === checklistId)?.defaultAmount }))
+        }
       />
     )
   }

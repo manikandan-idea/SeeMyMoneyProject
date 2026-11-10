@@ -1,6 +1,6 @@
 // Top bar: app name, search box (display-only for now), and page links.
 
-function Header({ current, onDashboard, onShowHistory, onShowSummary, onShowHidden }) {
+function Header({ current, onDashboard, onShowHistory, onShowHidden }) {
   return (
     <header className="header">
       <button type="button" className="header__brand header__brand-btn" onClick={onDashboard}>
@@ -20,14 +20,6 @@ function Header({ current, onDashboard, onShowHistory, onShowSummary, onShowHidd
           onClick={onShowHistory}
         >
           🧾 History
-        </button>
-        <button
-          type="button"
-          className="header__hidden-btn"
-          aria-current={current === 'summary' ? 'page' : undefined}
-          onClick={onShowSummary}
-        >
-          📊 Summary
         </button>
         <button
           type="button"

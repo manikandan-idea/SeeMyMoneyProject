@@ -8,6 +8,7 @@
 //   onBack()
 //   getUsageCount(checklistId) -> number          optional (Developer 3)
 //   getFolderRecords(folderId|null) -> Transaction[]  optional; null = section root
+//   initialFolderId      optional; open this folder first (period pages)
 //   getTotals(folderId|null) -> { total, count }  optional (Developer 4); null = section
 //   actions = {
 //     createFolder({ parentFolderId, name, usage, frequency, othersEnabled, checklist })
@@ -191,8 +192,9 @@ function SectionView({
   getUsageCount,
   getFolderRecords,
   getTotals,
+  initialFolderId = null,
 }) {
-  const [currentFolderId, setCurrentFolderId] = useState(null) // null = section root
+  const [currentFolderId, setCurrentFolderId] = useState(initialFolderId ?? null) // null = section root
   const [modal, setModal] = useState(null) // 'entry' | 'folder' | 'oneTime' | 'rename'
 
   const tree = useMemo(() => selectFolderTree(state, sectionId), [state, sectionId])
