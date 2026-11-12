@@ -14,11 +14,11 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { formatINR } from '../../utils/format.js'
-import ChecklistPanel from '../ChecklistPanel.jsx'
+import ChecklistSection from '../cards/ChecklistSection.jsx'
 import SavingArea from '../SavingArea.jsx'
+import FolderCard from '../cards/FolderCard.jsx'
 import { pageOwnerId } from '../../domain/folderChecklist.js'
-import { getChecklistUsageCount } from '../../domain/records.js'
-import { calculatePeriodTotals, calculateFolderTotals, getPeriodRange } from '../../domain/analytics.js'
+import { calculatePeriodTotals, getPeriodRange } from '../../domain/analytics.js'
 
 export const TABS = [
   { id: 'today', label: 'Today', usage: 'daily', range: 'today', empty: 'No daily items yet.' },
@@ -91,7 +91,7 @@ function AddFolderDialog({ tab, onConfirm, onCancel }) {
   )
 }
 
-function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, actions }) {
+function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpenSavingArea, actions, cardActions }) {
   const tab = TABS.find((t) => t.id === tabId) ?? TABS[0]
   const [adding, setAdding] = useState(false)
 
@@ -117,7 +117,7 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, actio
     // Checklist rows: reusable templates whose frequency matches this page.
     const folderById = new Map(state.folders.map((f) => [f.id, f]))
     const checklists = tab.usage && tab.usage !== 'occasional'
-      ? state.checklists.filter((c) => c.frequency === tab.usage && !folderById.get(c.folderId)?.hidden)
+      ? state.checklists.filter((c) => c.frequency === tab.usage && c.folderId === null)
       : []
     const countIn = (id) => state.transactions.filter(
       (t) => t.checklistId === id
@@ -160,18 +160,8 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, actio
         <>
           {tab.usage !== 'occasional' && (
             <section className="period__card">
-              <ChecklistPanel
-                rows={view.checklists}
-                getUsageCount={(id) => getChecklistUsageCount(state, id)}
-                canAddToSavingArea={false}
-                defaultType="expense"
-                onRecord={(id) => actions.record(id, view.checklists.find((c) => c.id === id).defaultAmount, 'checklist')}
-                onRecordOther={(id, amount) => actions.record(id, amount, 'checklist-other')}
-                onUpdateDefault={(id, defaultAmount) => actions.updateChecklist(id, { defaultAmount })}
-                onDelete={(id) => actions.deleteChecklist(id)}
-                onAdd={(title, defaultAmount, transactionType) =>
-                  actions.createChecklist({ title, defaultAmount, transactionType, frequency: tab.usage })}
-              />
+              <ChecklistSection lists={view.checklists} state={state} actions={cardActions}
+                onCreate={(c) => cardActions.createChecklist({ ...c, folderId: null, frequency: tab.usage })} />
             </section>
           )}
 
@@ -183,25 +173,12 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, actio
             {view.folders.length === 0 ? (
               <p className="period__empty">{tab.empty}</p>
             ) : (
-              <ul className="period__list">
-                {view.folders.map((f) => {
-                  const t = calculateFolderTotals(state, f.id)
-                  const kids = state.folders.filter((x) => x.parentFolderId === f.id).length
-                  const lists = state.checklists.filter((c) => c.folderId === f.id).length
-                  const type = TYPES.find((x) => x.id === f.sectionId)
-                  return (
-                    <li key={f.id}>
-                      <button type="button" className="frow" onClick={() => onOpenFolder(f)}>
-                        <span className="frow__name">📁 {f.name}</span>
-                        <span className="frow__meta">
-                          {lists} checklist · {kids} folders · {type?.label}
-                        </span>
-                        <span className="frow__amt">{formatINR(t[f.sectionId])}</span>
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
+              <div className="period__list">
+                {view.folders.map((f) => (
+                  <FolderCard key={f.id} state={state} folder={f} depth={0} ownerId={pageOwnerId(tab.usage)}
+                    actions={cardActions} onOpenSavingArea={onOpenSavingArea} />
+                ))}
+              </div>
             )}
           </section>
         </>
@@ -214,6 +191,7 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, actio
             checklists: tab.usage === 'occasional' ? [] : view.checklists,
             folders: view.folders,
           }}
+          onOpen={onOpenSavingArea ? () => onOpenSavingArea(pageOwnerId(tab.usage), tab.label) : undefined}
           onAdd={({ sourceType, sourceId }) =>
             actions.addSavingAreaEntry({ ownerFolderId: pageOwnerId(tab.usage), sourceType, sourceId })}
         />

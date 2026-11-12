@@ -6,12 +6,13 @@
 //   entries   SavingAreaEntry[] owned by this folder/page
 //   choices   { checklists: [{ id, title }], folders: [{ id, name }] }   what can be added
 //   onAdd({ sourceType: 'checklist' | 'folder', sourceId })             one new entry each time
+//   onOpen()  tapping the card opens the Saving Area page
 
 import { useEffect, useState } from 'react'
 import { groupSavingAreaEntries } from '../domain/folderChecklist.js'
 import './folders.css'
 
-function SavingArea({ entries, choices, onAdd }) {
+function SavingArea({ entries, choices, onAdd, onOpen }) {
   const [open, setOpen] = useState(false)
   const groups = groupSavingAreaEntries(entries)
   const total = choices.checklists.length + choices.folders.length
@@ -24,13 +25,21 @@ function SavingArea({ entries, choices, onAdd }) {
   }, [open])
 
   return (
-    <section className="saving-area" aria-label="Saving Area">
+    <section
+      className={`saving-area${onOpen ? ' saving-area--link' : ''}`}
+      aria-label="Saving Area"
+      role={onOpen ? 'button' : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onClick={onOpen}
+      onKeyDown={onOpen ? (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onOpen() } } : undefined}
+    >
       <div className="checklist__head">
         <h3 className="checklist__title">🐖 Saving Area</h3>
-        <button type="button" className="btn btn--sm" onClick={() => setOpen(true)}>
+        <button type="button" className="btn btn--sm" onClick={(e) => { e.stopPropagation(); setOpen(true) }}>
           + Add Items
         </button>
       </div>
+      {onOpen && <p className="modal__hint">Tap this card to open the Saving Area.</p>}
       {groups.length === 0 ? (
         <p className="other-panel__empty">Nothing in the Saving Area yet. Use “+ Add Items”.</p>
       ) : (

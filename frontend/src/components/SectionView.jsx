@@ -9,6 +9,7 @@
 //   getUsageCount(checklistId) -> number          optional (Developer 3)
 //   getFolderRecords(folderId|null) -> Transaction[]  optional; null = section root
 //   rootName             optional; name of the period page the folder was opened from
+//   onOpenSavingArea(ownerId, title)  tapping the Saving Area card opens its page
 //   initialFolderId      optional; open this folder first (period pages)
 //   getTotals(folderId|null) -> { total, count }  optional (Developer 4); null = section
 //   actions = {
@@ -196,6 +197,7 @@ function SectionView({
   getFolderRecords,
   getTotals,
   initialFolderId = null,
+  onOpenSavingArea,
 }) {
   const [currentFolderId, setCurrentFolderId] = useState(initialFolderId ?? null) // null = section root
   const [modal, setModal] = useState(null) // 'entry' | 'folder' | 'oneTime' | 'rename'
@@ -356,6 +358,7 @@ function SectionView({
       {node && (
         <SavingArea
           entries={node.savingAreaEntries}
+          onOpen={onOpenSavingArea ? () => onOpenSavingArea(node.id, node.name) : undefined}
           choices={{ checklists: checklists, folders: childFolders }}
           onAdd={({ sourceType, sourceId }) =>
             actions.addSavingAreaEntry({ ownerFolderId: node.id, sourceType, sourceId })}

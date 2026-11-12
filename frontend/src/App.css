@@ -926,3 +926,9 @@ fieldset.field legend {
 .modal select { padding: 8px; border: 1px solid var(--border); border-radius: 8px; font: inherit; background: #fff; }
 .field__error { color: var(--red); margin: 4px 0; font-size: .85rem; }
 .saving-pick { display: block; width: 100%; text-align: left; margin: 4px 0; }
+@media (max-width: 640px) {
+  .header__right { flex-wrap: wrap; }
+  .header__search { flex: 1 1 100%; }
+  .header__hidden-btn { padding: 6px 10px; }
+}
+body, .app { overflow-x: hidden; }

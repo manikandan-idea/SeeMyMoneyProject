@@ -327,6 +327,15 @@ export function addSavingAreaEntry(state, input) {
   return { ...state, savingAreaEntries: [...state.savingAreaEntries, entry] }
 }
 
+// Removes exactly ONE Saving Area entry (by its own id). Nothing else changes:
+// the original checklist/folder, transactions and other entries stay as they are.
+export function removeSavingAreaEntry(state, entryId) {
+  if (!state.savingAreaEntries.some((e) => e.id === entryId)) {
+    throw new Error(`Saving Area entry "${entryId}" does not exist.`)
+  }
+  return { ...state, savingAreaEntries: state.savingAreaEntries.filter((e) => e.id !== entryId) }
+}
+
 // Safe movement primitive: reassign every entry owned by sourceFolderId to
 // targetFolderId (same entry ids, same order). Validates the target BEFORE any
 // change. Repeating the call finds nothing left in the source and returns the

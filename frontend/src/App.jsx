@@ -7,6 +7,7 @@ import { useCallback, useMemo, useState } from 'react'
 import Header from './components/Header.jsx'
 import SectionView from './components/SectionView.jsx'
 import HiddenView from './components/HiddenView.jsx'
+import SavingAreaPage from './components/SavingAreaPage.jsx'
 import PeriodPage from './components/period/PeriodPage.jsx'
 import HistoryView from './components/records/HistoryView.jsx'
 import { useAppStore } from './data/useAppStore.jsx'
@@ -19,6 +20,8 @@ import {
   updateChecklistTemplate,
   deleteChecklistTemplate,
   addSavingAreaEntry,
+  removeSavingAreaEntry,
+  isPageOwner,
 } from './domain/folderChecklist.js'
 import {
   createTransaction,
@@ -137,6 +140,22 @@ function App() {
     createChecklist: (input) => run((s) => createChecklistTemplate(s, { ...input, folderId: null })),
   }
 
+  // Callbacks for the folder cards (card_records.html behaviour), used on every period page.
+  const cardActions = {
+    createFolder: (input) => run((s) => createFolder(s, { ...input, othersEnabled: false })),
+    hideFolder: (id) => run((s) => setFolderHidden(s, id, true)),
+    addSavingAreaEntry: (input) => run((s) => addSavingAreaEntry(s, input)),
+    removeSavingAreaEntry: (id) => run((s) => removeSavingAreaEntry(s, id)),
+    createChecklist: (input) => run((s) => createChecklistTemplate(s, input)),
+    updateDefault: (id, defaultAmount) => run((s) => updateChecklistTemplate(s, id, { defaultAmount })),
+    deleteChecklist: (id) => run((s) => deleteChecklistTemplate(s, id)),
+    record: (checklistId, amount, source) =>
+      run((s) => {
+        const c = s.checklists.find((x) => x.id === checklistId)
+        return createTransaction(s, { sectionId: c.sectionId, folderId: c.folderId ?? null, checklistId, amount, source })
+      }),
+  }
+
   const header = (
     <Header
       current={view.name}
@@ -194,6 +213,7 @@ function App() {
         sectionIcon={meta.icon}
         state={state}
         initialFolderId={view.folderId}
+        onOpenSavingArea={(ownerId, title) => setView({ name: 'saving', ownerId, title, from: view })}
         rootName={view.folderId ? TAB_NAMES[view.returnTab] || 'Today' : null}
         onBack={goHome}
         actions={sectionActions}
@@ -204,6 +224,19 @@ function App() {
           )
         }
         getTotals={(folderId) => getTotals(view.sectionId, folderId)}
+      />
+    )
+  } else if (view.name === 'saving') {
+    // Back returns to exactly where the card was tapped (same folder or same page).
+    const back = isPageOwner(view.ownerId) ? view.from : { ...view.from, folderId: view.ownerId }
+    body = (
+      <SavingAreaPage
+        state={state}
+        ownerId={view.ownerId}
+        title={view.title}
+        onBack={() => setView(back)}
+        onRemoveEntry={(id) => run((s) => removeSavingAreaEntry(s, id))}
+        onUpdateDefault={(id, defaultAmount) => run((s) => updateChecklistTemplate(s, id, { defaultAmount }))}
       />
     )
   } else if (view.name === 'history') {
@@ -233,6 +266,7 @@ function App() {
         state={state}
         tab={view.tab || 'today'}
         onTab={(tab) => setView({ name: 'period', tab })}
+        onOpenSavingArea={(ownerId, title) => setView({ name: 'saving', ownerId, title, from: view })}
         onOpenFolder={(folder) =>
           setView({ name: 'section', sectionId: folder.sectionId, folderId: folder.id, returnTab: view.tab })
         }
@@ -240,6 +274,7 @@ function App() {
           run((s) => createFolder(s, { sectionId, parentFolderId: null, name, usage, frequency, othersEnabled: false }))
         }
         actions={pageActions}
+        cardActions={cardActions}
       />
     )
   }

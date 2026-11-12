@@ -139,3 +139,17 @@ test('every folder and every period page has a Saving Area (entries, not money)'
   const moved = settleSavingAreaEntries(s, { sourceFolderId: 'page:daily', targetFolderId: 'page:monthly' })
   assert.deepEqual(moved.savingAreaEntries.filter((e) => e.ownerFolderId === 'page:monthly').map((e) => e.id), ids)
 })
+
+test('removing one Saving Area entry removes exactly that entry', async () => {
+  const { addSavingAreaEntry, removeSavingAreaEntry } = await import('../src/domain/folderChecklist.js')
+  let s = base()
+  const c = tea(s)
+  for (let i = 0; i < 3; i++) s = addSavingAreaEntry(s, { ownerFolderId: c.folderId, sourceType: 'checklist', sourceId: c.id })
+  const [a, b, d] = s.savingAreaEntries.map((e) => e.id)
+  const next = removeSavingAreaEntry(s, b)
+  assert.deepEqual(next.savingAreaEntries.map((e) => e.id), [a, d])
+  assert.equal(next.transactions, s.transactions)
+  assert.equal(next.checklists, s.checklists)
+  assert.equal(next.folders, s.folders)
+  assert.throws(() => removeSavingAreaEntry(next, b))
+})
