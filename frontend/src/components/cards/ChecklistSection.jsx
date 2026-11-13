@@ -1,13 +1,23 @@
 // "Checklists" section: heading + "+ Add checklist", the creation form (Amount first,
-// name optional, Type) and the one-line checklist cards. Used inside a folder card and
-// directly on a period page.
+// name optional, Type, Advanced settings -> Record count) and the one-line checklist
+// cards. Used inside a folder card and directly on a period page.
 //   lists                     checklist templates to show
-//   state                     AppState (for usage counts)
-//   onCreate({ title, defaultAmount, transactionType })
-//   actions                   { record, updateDefault, deleteChecklist }
+//   state                     AppState (for record counts / latest record)
+//   onCreate({ id, title, defaultAmount, transactionType, recordCount })
+//   actions                   { record, updateDefault, deleteChecklist, recordOtherRow,
+//                               removeRecord, restoreRecord }
+//   variant                   'page' = period-page rows (no Records box / undo / redo, + adds to
+//                             the Saving Area, Delete in a ⋮ menu). Folder cards keep 'default'.
+//   onAddToSaving(checklist, amount?)  page variant: the + button (default amount) and
+//                             Other > Record (typed amount, no new checklist, no transaction)
+//   onHistory(action)         optional; a folder card passes its history logger so its
+//                             ← → arrows can undo / redo what happens here. Without it
+//                             (period page) deleting a checklist asks for confirmation.
 
 import { useState } from 'react'
-import { getChecklistUsageCount } from '../../domain/records.js'
+import { getChecklistUsageCount, getLatestChecklistTransaction } from '../../domain/records.js'
+import { makeId } from '../../domain/folderChecklist.js'
+import AdvancedSettings, { parseRecordCount } from './AdvancedSettings.jsx'
 import ChecklistRow from './ChecklistRow.jsx'
 import Svg from './Svg.jsx'
 
@@ -19,21 +29,49 @@ function nextName(base, names) {
   return `${base} ${n}`
 }
 
-function ChecklistSection({ lists, state, trail = [], actions, onCreate }) {
+function ChecklistSection({ lists, state, trail = [], actions, onCreate, onHistory, variant = 'default', onAddToSaving }) {
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
   const [type, setType] = useState('spend')
   const [bad, setBad] = useState(false)
+  const [advOpen, setAdvOpen] = useState(false)
+  const [rc, setRc] = useState('1')
+  const [rcBad, setRcBad] = useState(false)
   const auto = nextName('Checklist', lists.map((c) => c.title))
 
-  function openForm() { setAdding(true); setName(''); setAmount(''); setType('spend'); setBad(false) }
+  function openForm() {
+    setAdding(true); setName(''); setAmount(''); setType('spend'); setBad(false)
+    setAdvOpen(false); setRc('1'); setRcBad(false)
+  }
   function submit(e) {
     e.preventDefault()
     const n = Number(amount)
     if (!(n > 0)) { setBad(true); return }
-    onCreate({ title: name.trim() || auto, defaultAmount: Math.round(n * 100) / 100, transactionType: TYPE_TO_ID[type] })
+    const count = parseRecordCount(rc)
+    if (count === null) { setAdvOpen(true); setRcBad(true); return }
+    const id = makeId()
+    onCreate({
+      id, title: name.trim() || auto, defaultAmount: Math.round(n * 100) / 100,
+      transactionType: TYPE_TO_ID[type], recordCount: count,
+    })
+    onHistory?.({ t: 'addC', id })
     setAdding(false)
+  }
+
+  // Trash at 0 / 1 record: delete the reusable checklist only (records stay in History).
+  function removeRow(c) {
+    if (!onHistory && !window.confirm(`Delete the checklist “${c.title}”? Only the reusable checklist is removed. Everything already recorded stays in History.`)) return
+    const index = state.checklists.findIndex((x) => x.id === c.id)
+    actions.deleteChecklist(c.id)
+    onHistory?.({ t: 'delC', snap: { row: c, index, txs: [] } })
+  }
+  // "Other": a NEW row with the same name goes directly below; the amount typed is its
+  // first record and its default.
+  function addOtherRow(c, amountValue) {
+    const id = makeId()
+    actions.recordOtherRow({ sourceId: c.id, newId: id, amount: amountValue })
+    onHistory?.({ t: 'addC', id, withRecords: true })
   }
 
   return (
@@ -70,17 +108,24 @@ function ChecklistSection({ lists, state, trail = [], actions, onCreate }) {
               ))}
             </div>
           </div>
+          <AdvancedSettings open={advOpen} onToggle={() => setAdvOpen((v) => !v)} value={rc} bad={rcBad}
+            onChange={(v) => { setRc(v); setRcBad(false) }} />
           <button type="submit" className="fc__create">Create Checklist</button>
         </form>
       )}
       <div className="fc__list">
         {lists.length === 0 && <div className="fc__empty">No checklists yet</div>}
         {lists.map((c) => (
-          <ChecklistRow key={c.id} checklist={c} trail={trail}
+          <ChecklistRow key={c.id} checklist={c} trail={trail} variant={variant}
+            onAddToSaving={() => onAddToSaving?.(c)}
             records={getChecklistUsageCount(state, c.id)}
+            latestTx={getLatestChecklistTransaction(state, c.id)}
             onRecord={(amountValue, source) => actions.record(c.id, amountValue, source)}
             onUpdateDefault={(v) => actions.updateDefault(c.id, v)}
-            onDelete={() => actions.deleteChecklist(c.id)} />
+            onOther={(amountValue) => (variant === 'page' ? onAddToSaving?.(c, amountValue) : addOtherRow(c, amountValue))}
+            onRemoveRecord={(txId) => actions.removeRecord(txId)}
+            onRestoreRecord={(tx) => actions.restoreRecord(tx)}
+            onDelete={() => removeRow(c)} />
         ))}
       </div>
     </div>

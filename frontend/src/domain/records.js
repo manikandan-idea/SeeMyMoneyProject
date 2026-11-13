@@ -104,6 +104,27 @@ export function deleteTransaction(state, transactionId) {
   return { ...state, transactions: list.filter((t) => t.id !== transactionId) }
 }
 
+/** Puts back a row removed by undo (same id, same data). No-op when the id already exists. */
+export function restoreTransaction(state, tx) {
+  if (!tx || typeof tx.id !== 'string') return state
+  if (txOf(state).some((t) => t.id === tx.id)) return state
+  return { ...state, transactions: [...txOf(state), tx] }
+}
+
+/** The most recently recorded row of a checklist (null when it has none). Used by Undo. */
+export function getLatestChecklistTransaction(state, checklistId) {
+  if (!checklistId) return null
+  let best = null
+  let bestIndex = -1
+  txOf(state).forEach((t, i) => {
+    if (t.checklistId !== checklistId) return
+    const later = !best || (t.recordedAt || '') > (best.recordedAt || '')
+      || ((t.recordedAt || '') === (best.recordedAt || '') && i > bestIndex)
+    if (later) { best = t; bestIndex = i }
+  })
+  return best
+}
+
 /** Newest first. Filters: sectionId, transactionType, fromDate, toDate (local YYYY-MM-DD), search. */
 export function selectHistoryRecords(state, filters = {}) {
   const { sectionId, transactionType, fromDate, toDate, search } = filters || {}

@@ -16,9 +16,11 @@ import {
   updateFolder,
   setFolderHidden,
   duplicateFolderStructure,
+  copyFolderToSavingArea,
   createChecklistTemplate,
   updateChecklistTemplate,
   deleteChecklistTemplate,
+  restoreChecklistTemplate,
   addSavingAreaEntry,
   removeSavingAreaEntry,
   isPageOwner,
@@ -27,6 +29,7 @@ import {
   createTransaction,
   updateTransactionAmount,
   deleteTransaction,
+  restoreTransaction,
   getChecklistUsageCount,
 } from './domain/records.js'
 import { calculateSectionTotals, calculateFolderTotals } from './domain/analytics.js'
@@ -144,16 +147,50 @@ function App() {
   const cardActions = {
     createFolder: (input) => run((s) => createFolder(s, { ...input, othersEnabled: false })),
     hideFolder: (id) => run((s) => setFolderHidden(s, id, true)),
+    unhideFolder: (id) => run((s) => setFolderHidden(s, id, false)),
     addSavingAreaEntry: (input) => run((s) => addSavingAreaEntry(s, input)),
     removeSavingAreaEntry: (id) => run((s) => removeSavingAreaEntry(s, id)),
+    copyFolderToSavingArea: (input) => run((s) => copyFolderToSavingArea(s, input)),
     createChecklist: (input) => run((s) => createChecklistTemplate(s, input)),
     updateDefault: (id, defaultAmount) => run((s) => updateChecklistTemplate(s, id, { defaultAmount })),
     deleteChecklist: (id) => run((s) => deleteChecklistTemplate(s, id)),
+    // Undo of a row made by "Other": the row AND the one record that came with it.
+    deleteChecklistWithRecords: (id) =>
+      run((s) => ({
+        ...deleteChecklistTemplate(s, id),
+        transactions: s.transactions.filter((t) => t.checklistId !== id),
+      })),
+    // Redo / undo-of-delete: the same template (same id, same place) and any records it had.
+    restoreChecklist: ({ row, index, txs = [] }) =>
+      run((s) => txs.reduce((acc, tx) => restoreTransaction(acc, tx), restoreChecklistTemplate(s, row, index))),
     record: (checklistId, amount, source) =>
       run((s) => {
         const c = s.checklists.find((x) => x.id === checklistId)
         return createTransaction(s, { sectionId: c.sectionId, folderId: c.folderId ?? null, checklistId, amount, source })
       }),
+    // "Other" on a checklist row: a NEW row with the same name directly below it, whose
+    // default is the typed amount, plus ONE record of that amount. The original row and
+    // its records are not touched.
+    recordOtherRow: ({ sourceId, newId, amount }) =>
+      run((s) => {
+        const src = s.checklists.find((x) => x.id === sourceId)
+        if (!src) throw new Error('That checklist no longer exists.')
+        const withRow = createChecklistTemplate(s, {
+          id: newId,
+          afterChecklistId: sourceId,
+          sectionId: src.sectionId,
+          folderId: src.folderId,
+          title: src.title,
+          defaultAmount: amount,
+          transactionType: src.transactionType,
+          frequency: src.frequency,
+          recordCount: src.recordCount,
+        })
+        return createTransaction(withRow, { checklistId: newId, amount, source: 'checklist-other' })
+      }),
+    // Row undo / redo: remove the latest record, or put the very same record back.
+    removeRecord: (txId) => run((s) => deleteTransaction(s, txId)),
+    restoreRecord: (tx) => run((s) => restoreTransaction(s, tx)),
   }
 
   const header = (

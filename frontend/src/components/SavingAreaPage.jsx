@@ -47,7 +47,7 @@ function SavingAreaPage({ state, ownerId, title, onBack, onRemoveEntry, onUpdate
 
   const totals = { expense: 0, income: 0, saving: 0 }
   for (const g of checklistGroups) {
-    if (g.template) totals[g.template.transactionType] += g.template.defaultAmount * g.count
+    if (g.template) totals[g.template.transactionType] += (g.amount ?? g.template.defaultAmount) * g.count
   }
 
   const removeOne = (group) => onRemoveEntry(group.entries[group.entries.length - 1].id)
@@ -92,11 +92,14 @@ function SavingAreaPage({ state, ownerId, title, onBack, onRemoveEntry, onUpdate
                     {g.count > 1 && g.template && editingKey !== g.key && (
                       <span className="sa-records">
                         <span>{g.count} records</span><span>·</span>
-                        <strong>{formatINR(g.template.defaultAmount * g.count)}</strong>
+                        <strong>{formatINR((g.amount ?? g.template.defaultAmount) * g.count)}</strong>
                       </span>
                     )}
                     {g.count > 1 && !g.template && <span className="sa-records">{g.count} records</span>}
-                    {g.template && (editingKey === g.key ? (
+                    {g.template && g.amount !== undefined && (
+                      <span className="sa-amount">{formatINR(g.amount)}</span>
+                    )}
+                    {g.template && g.amount === undefined && (editingKey === g.key ? (
                       <span className="sa-edit">
                         <span>₹</span>
                         <input type="number" inputMode="decimal" min="1" autoFocus value={draft}

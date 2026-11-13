@@ -290,6 +290,7 @@ function checkSavingEntry(e, label, add) {
   if (!isNonEmptyString(e.sourceId)) add(`${label}.sourceId must be an id.`)
   if (typeof e.titleSnapshot !== 'string') add(`${label}.titleSnapshot must be a string.`)
   if (!isTimestamp(e.addedAt)) add(`${label}.addedAt must be an ISO timestamp.`)
+  if (e.amount !== undefined && !(Number(e.amount) > 0)) add(`${label}.amount must be a positive number when present.`)
 }
 
 // Every parent must exist (same section) and the parent chain must not loop —

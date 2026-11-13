@@ -17,7 +17,7 @@ import { formatINR } from '../../utils/format.js'
 import ChecklistSection from '../cards/ChecklistSection.jsx'
 import SavingArea from '../SavingArea.jsx'
 import FolderCard from '../cards/FolderCard.jsx'
-import { pageOwnerId } from '../../domain/folderChecklist.js'
+import { makeId, pageOwnerId } from '../../domain/folderChecklist.js'
 import { calculatePeriodTotals, getPeriodRange } from '../../domain/analytics.js'
 
 export const TABS = [
@@ -94,10 +94,11 @@ function AddFolderDialog({ tab, onConfirm, onCancel }) {
 function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpenSavingArea, actions, cardActions }) {
   const tab = TABS.find((t) => t.id === tabId) ?? TABS[0]
   const [adding, setAdding] = useState(false)
+  const [editing, setEditing] = useState(null) // { copyId, sourceId }: a Saving Area copy being edited
 
   const view = useMemo(() => {
     const folders = state.folders.filter(
-      (f) => !f.hidden && f.parentFolderId === null && tab.usage && f.usage === tab.usage,
+      (f) => !f.hidden && !f.savingCopy && f.parentFolderId === null && tab.usage && f.usage === tab.usage,
     )
     const range = getPeriodRange(tab.range)
     let totals
@@ -160,7 +161,8 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpe
         <>
           {tab.usage !== 'occasional' && (
             <section className="period__card">
-              <ChecklistSection lists={view.checklists} state={state} actions={cardActions}
+              <ChecklistSection lists={view.checklists} state={state} actions={cardActions} variant="page"
+                onAddToSaving={(c, amount) => actions.addSavingAreaEntry({ ownerFolderId: pageOwnerId(tab.usage), sourceType: 'checklist', sourceId: c.id, ...(amount ? { amount } : {}) })}
                 onCreate={(c) => cardActions.createChecklist({ ...c, folderId: null, frequency: tab.usage })} />
             </section>
           )}
@@ -174,10 +176,24 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpe
               <p className="period__empty">{tab.empty}</p>
             ) : (
               <div className="period__list">
-                {view.folders.map((f) => (
-                  <FolderCard key={f.id} state={state} folder={f} depth={0} ownerId={pageOwnerId(tab.usage)}
-                    actions={cardActions} onOpenSavingArea={onOpenSavingArea} />
-                ))}
+                {view.folders.flatMap((f) => {
+                  const copy = editing && editing.sourceId === f.id
+                    ? state.folders.find((x) => x.id === editing.copyId) : null
+                  return [
+                    <FolderCard key={f.id} state={state} folder={f} depth={0} ownerId={pageOwnerId(tab.usage)}
+                      actions={cardActions} onOpenSavingArea={onOpenSavingArea}
+                      onCopyEdit={() => {
+                        const copyId = makeId()
+                        cardActions.copyFolderToSavingArea({ folderId: f.id, ownerFolderId: pageOwnerId(tab.usage), id: copyId })
+                        setEditing({ copyId, sourceId: f.id })
+                      }} />,
+                    copy && (
+                      <FolderCard key={copy.id} state={state} folder={copy} depth={0} ownerId={pageOwnerId(tab.usage)}
+                        actions={cardActions} onOpenSavingArea={onOpenSavingArea}
+                        editingCopy onDone={() => setEditing(null)} />
+                    ),
+                  ]
+                })}
               </div>
             )}
           </section>

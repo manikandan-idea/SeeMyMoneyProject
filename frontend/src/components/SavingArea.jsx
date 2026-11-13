@@ -10,6 +10,7 @@
 
 import { useEffect, useState } from 'react'
 import { groupSavingAreaEntries } from '../domain/folderChecklist.js'
+import { formatINR } from '../utils/format.js'
 import './folders.css'
 
 function SavingArea({ entries, choices, onAdd, onOpen }) {
@@ -45,7 +46,7 @@ function SavingArea({ entries, choices, onAdd, onOpen }) {
       ) : (
         groups.map((group) => (
           <div key={group.key} className="saving-area__row">
-            <span>{group.sourceType === 'folder' ? '📁' : '📋'} {group.titleSnapshot}</span>
+            <span>{group.sourceType === 'folder' ? '📁' : '📋'} {group.titleSnapshot}{group.amount !== undefined ? ` · ${formatINR(group.amount)}` : ''}</span>
             <span className="saving-area__count">×{group.count}</span>
           </div>
         ))

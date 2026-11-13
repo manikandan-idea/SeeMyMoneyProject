@@ -46,6 +46,32 @@ export function periodKeyFor(usage, date = new Date()) {
   return null
 }
 
+// Insert `item` right after the item with id `afterId` (a twin / copy sits directly
+// below its original). Unknown or missing afterId -> appended at the end.
+function insertAfter(list, item, afterId) {
+  const i = afterId ? list.findIndex((x) => x.id === afterId) : -1
+  if (i === -1) return [...list, item]
+  return [...list.slice(0, i + 1), item, ...list.slice(i + 1)]
+}
+
+// Optional caller-chosen id (lets the UI remember what it created so it can undo it).
+function chosenId(state, list, id, label) {
+  if (id === undefined || id === null || id === '') return makeId()
+  if (typeof id !== 'string') throw new Error(`${label} id must be a string.`)
+  if (list.some((x) => x.id === id)) throw new Error(`${label} id \"${id}\" already exists.`)
+  return id
+}
+
+// "Record count" (Advanced settings of the creation forms): whole number 1..999.
+// Stored only when it is not the default 1; read it as `item.recordCount ?? 1`.
+function recordCountField(value) {
+  if (value === undefined || value === null) return {}
+  if (!Number.isInteger(value) || value < 1 || value > 999) {
+    throw new Error('Record count must be a whole number from 1 to 999.')
+  }
+  return value === 1 ? {} : { recordCount: value }
+}
+
 function isPositiveAmount(value) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
 }
@@ -105,9 +131,9 @@ function resolveTransactionType(folder, supplied) {
   return supplied
 }
 
-function buildChecklist(folder, input, at) {
+function buildChecklist(folder, input, at, id = makeId()) {
   return {
-    id: makeId(),
+    id,
     sectionId: folder.sectionId,
     folderId: folder.id,
     title: cleanText(input.title, 'Checklist title'),
@@ -119,6 +145,7 @@ function buildChecklist(folder, input, at) {
     })(),
     transactionType: resolveTransactionType(folder, input.transactionType),
     frequency: resolveChecklistFrequency(folder, input.frequency),
+    ...recordCountField(input.recordCount),
     createdAt: at,
     updatedAt: at,
   }
@@ -131,6 +158,8 @@ function buildChecklist(folder, input, at) {
 // `checklist` is an OPTIONAL additive field: [{ title, defaultAmount }] — it lets
 // the "New folder" form create the folder and its first reusable checklists in a
 // single commit. Omit it for the exact contract shape.
+// Other OPTIONAL additive fields: `id` (caller-chosen, for undo), `afterFolderId`
+// (insert right below that sibling, used by "+ Edit" twins) and `recordCount`.
 export function createFolder(state, input) {
   const { sectionId, parentFolderId = null } = input
   requireSection(state, sectionId)
@@ -143,7 +172,7 @@ export function createFolder(state, input) {
   const { usage, frequency } = normaliseUsage(input.usage, input.frequency)
   const at = nowIso()
   const folder = {
-    id: makeId(),
+    id: chosenId(state, state.folders, input.id, 'Folder'),
     sectionId,
     parentFolderId,
     name: cleanText(input.name, 'Folder name'),
@@ -152,13 +181,14 @@ export function createFolder(state, input) {
     othersEnabled: Boolean(input.othersEnabled),
     hidden: false,
     periodKey: periodKeyFor(usage),
+    ...recordCountField(input.recordCount),
     createdAt: at,
     updatedAt: at,
   }
   const checklists = (input.checklist || []).map((row) => buildChecklist(folder, row, at))
   return {
     ...state,
-    folders: [...state.folders, folder],
+    folders: insertAfter(state.folders, folder, input.afterFolderId),
     checklists: [...state.checklists, ...checklists],
   }
 }
@@ -239,6 +269,9 @@ export function duplicateFolderStructure(state, folderId) {
 // input: { sectionId, folderId, title, defaultAmount, transactionType, frequency }
 // transactionType defaults to the folder's section; frequency defaults to the
 // folder's usage when that is daily/monthly/yearly (the page already says so).
+// OPTIONAL additive fields: `id` (caller-chosen, for undo), `afterChecklistId`
+// (insert right below that checklist: "Other" adds a same-name row below) and
+// `recordCount`.
 export function createChecklistTemplate(state, input) {
   // A checklist placed directly on a period page has no folder (folderId null).
   // Its section follows the chosen type (Spend=expense, Received=income, Savings=saving).
@@ -246,15 +279,29 @@ export function createChecklistTemplate(state, input) {
     const type = resolveTransactionType({ sectionId: input.sectionId || 'expense' }, input.transactionType || input.sectionId)
     requireSection(state, type)
     const pseudo = { id: null, sectionId: type, usage: input.frequency ?? null }
-    const root = buildChecklist(pseudo, { ...input, transactionType: type, frequency: input.frequency ?? null }, nowIso())
-    return { ...state, checklists: [...state.checklists, root] }
+    const rootId = chosenId(state, state.checklists, input.id, 'Checklist')
+    const root = buildChecklist(pseudo, { ...input, transactionType: type, frequency: input.frequency ?? null }, nowIso(), rootId)
+    return { ...state, checklists: insertAfter(state.checklists, root, input.afterChecklistId) }
   }
   const folder = requireFolder(state, input.folderId)
   if (input.sectionId !== undefined && input.sectionId !== folder.sectionId) {
     throw new Error('Checklist sectionId must match its folder\'s section.')
   }
-  const checklist = buildChecklist(folder, input, nowIso())
-  return { ...state, checklists: [...state.checklists, checklist] }
+  const checklist = buildChecklist(folder, input, nowIso(), chosenId(state, state.checklists, input.id, 'Checklist'))
+  return { ...state, checklists: insertAfter(state.checklists, checklist, input.afterChecklistId) }
+}
+
+// Puts back a template that was removed (undo / redo). Same id, same position.
+// No-op when it already exists or its folder is gone.
+export function restoreChecklistTemplate(state, checklist, index) {
+  if (!checklist || typeof checklist.id !== 'string') return state
+  if (state.checklists.some((c) => c.id === checklist.id)) return state
+  if (checklist.folderId && !state.folders.some((f) => f.id === checklist.folderId)) return state
+  const at = Number.isInteger(index) ? Math.min(Math.max(index, 0), state.checklists.length) : state.checklists.length
+  return {
+    ...state,
+    checklists: [...state.checklists.slice(0, at), checklist, ...state.checklists.slice(at)],
+  }
 }
 
 const CHECKLIST_PATCH_FIELDS = ['title', 'defaultAmount', 'transactionType', 'frequency']
@@ -322,9 +369,48 @@ export function addSavingAreaEntry(state, input) {
     sourceType: input.sourceType,
     sourceId: input.sourceId,
     titleSnapshot,
+    // Optional per-entry amount (period-page "Other"): this entry counts with THIS amount;
+    // the reusable checklist and its default are not changed.
+    ...(input.sourceType === 'checklist' && Number(input.amount) > 0
+      ? { amount: Math.round(Number(input.amount) * 100) / 100 } : {}),
     addedAt: nowIso(),
   }
   return { ...state, savingAreaEntries: [...state.savingAreaEntries, entry] }
+}
+
+// "+ Edit" on a page folder: makes an independent COPY of the folder (inner folders and
+// checklist templates, new ids, no transactions) and puts it into `ownerFolderId`'s
+// Saving Area as one entry. The original is never touched. The copy is flagged
+// `savingCopy` so it never shows up as a normal folder on a page / in a section tree;
+// it lives only in the Saving Area. input: { folderId, ownerFolderId, id? }
+export function copyFolderToSavingArea(state, input) {
+  const original = requireFolder(state, input.folderId)
+  const at = nowIso()
+  const rootId = chosenId(state, state.folders, input.id, 'Folder')
+  const newFolders = []
+  const newChecklists = []
+  function copy(folder, id, parentFolderId, root) {
+    newFolders.push({
+      ...folder, id, parentFolderId, hidden: false,
+      ...(root ? { savingCopy: true } : {}),
+      createdAt: at, updatedAt: at,
+    })
+    for (const c of state.checklists) {
+      if (c.folderId === folder.id) newChecklists.push({ ...c, id: makeId(), folderId: id, createdAt: at, updatedAt: at })
+    }
+    for (const child of state.folders) {
+      if (child.parentFolderId === folder.id && !child.hidden) copy(child, makeId(), id, false)
+    }
+  }
+  copy(original, rootId, null, true)
+  const withCopy = {
+    ...state,
+    folders: [...state.folders, ...newFolders],
+    checklists: [...state.checklists, ...newChecklists],
+  }
+  return addSavingAreaEntry(withCopy, {
+    ownerFolderId: input.ownerFolderId, sourceType: 'folder', sourceId: rootId,
+  })
 }
 
 // Removes exactly ONE Saving Area entry (by its own id). Nothing else changes:
@@ -333,7 +419,24 @@ export function removeSavingAreaEntry(state, entryId) {
   if (!state.savingAreaEntries.some((e) => e.id === entryId)) {
     throw new Error(`Saving Area entry "${entryId}" does not exist.`)
   }
-  return { ...state, savingAreaEntries: state.savingAreaEntries.filter((e) => e.id !== entryId) }
+  const entry = state.savingAreaEntries.find((e) => e.id === entryId)
+  const next = { ...state, savingAreaEntries: state.savingAreaEntries.filter((e) => e.id !== entryId) }
+  // A "+ Edit" copy exists only for its Saving Area entry: when the last entry goes, the copy goes too.
+  const copy = entry.sourceType === 'folder' ? state.folders.find((f) => f.id === entry.sourceId) : null
+  if (copy?.savingCopy && !next.savingAreaEntries.some((e) => e.sourceType === 'folder' && e.sourceId === copy.id)) {
+    const gone = new Set([copy.id])
+    for (let grew = true; grew;) {
+      grew = false
+      for (const f of next.folders) if (f.parentFolderId && gone.has(f.parentFolderId) && !gone.has(f.id)) { gone.add(f.id); grew = true }
+    }
+    return {
+      ...next,
+      folders: next.folders.filter((f) => !gone.has(f.id)),
+      checklists: next.checklists.filter((c) => !gone.has(c.folderId)),
+      savingAreaEntries: next.savingAreaEntries.filter((e) => !gone.has(e.ownerFolderId)),
+    }
+  }
+  return next
 }
 
 // Safe movement primitive: reassign every entry owned by sourceFolderId to
@@ -383,7 +486,7 @@ export function selectFolderTree(state, sectionId) {
     const node = byId[folder.id]
     const parent = folder.parentFolderId ? byId[folder.parentFolderId] : null
     if (parent) parent.folders.push(node)
-    else top.push(node) // top-level (or orphan: parent missing — keep it reachable)
+    else if (!folder.savingCopy) top.push(node) // top-level (or orphan); Saving Area copies live only there
   }
   const stamp = (node, path) => {
     node.path = [...path, node.id]
@@ -418,13 +521,15 @@ export function selectHiddenFolders(state) {
 export function groupSavingAreaEntries(entries) {
   const groups = new Map()
   for (const entry of entries) {
-    const key = `${entry.sourceType}:${entry.sourceId}`
+    // entries with their own amount form a separate row per amount
+    const key = `${entry.sourceType}:${entry.sourceId}${entry.amount !== undefined ? `:${entry.amount}` : ''}`
     if (!groups.has(key)) {
       groups.set(key, {
         key,
         sourceType: entry.sourceType,
         sourceId: entry.sourceId,
         titleSnapshot: entry.titleSnapshot,
+        ...(entry.amount !== undefined ? { amount: entry.amount } : {}),
         count: 0,
         entries: [],
       })

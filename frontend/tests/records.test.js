@@ -131,3 +131,23 @@ test('unlinked groups by type+description+amount; saving entries not counted', (
   assert.equal(g.length, 2)
   assert.equal(getChecklistUsageCount(s, 'tea'), 0)
 })
+
+// ---- undo / redo support for checklist rows ----
+import { restoreTransaction, getLatestChecklistTransaction } from '../src/domain/records.js'
+
+test('restoreTransaction puts a removed row back once; latest row of a checklist is found', () => {
+  const mk = (id, at, amount) => ({
+    id, sectionId: 'expense', folderId: null, folderNameSnapshot: null, checklistId: 'c1',
+    checklistTitleSnapshot: 'Tea', description: 'Tea', amount, transactionType: 'expense',
+    recordedAt: at, transactionDate: '2026-11-13', source: 'checklist',
+  })
+  const s = { transactions: [mk('a', '2026-11-13T05:00:00.000Z', 15), mk('b', '2026-11-13T06:00:00.000Z', 20)] }
+  assert.equal(getLatestChecklistTransaction(s, 'c1').id, 'b')
+  assert.equal(getLatestChecklistTransaction(s, 'nope'), null)
+  const removed = s.transactions[1]
+  const after = { transactions: s.transactions.filter((t) => t.id !== 'b') }
+  assert.equal(getLatestChecklistTransaction(after, 'c1').id, 'a')
+  const back = restoreTransaction(after, removed)
+  assert.deepEqual(back.transactions.map((t) => t.id), ['a', 'b'])
+  assert.equal(restoreTransaction(back, removed), back)
+})
