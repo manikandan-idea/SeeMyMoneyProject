@@ -44,6 +44,7 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
   const [adding, setAdding] = useState(null) // 'c' | 'f' | null
   const [name, setName] = useState('')
   const [flash, setFlash] = useState(false)
+  const [undone, setUndone] = useState(0) // how many "+ Add item" taps were undone (available to redo)
 
   const path = [...trail, folder.name]
   const lists = state.checklists.filter((c) => c.folderId === folder.id)
@@ -80,8 +81,19 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
   }
   function onAddItem() {
     actions.addSavingAreaEntry({ ownerFolderId: ownerId, sourceType: 'folder', sourceId: folder.id })
+    setUndone(0)
     setFlash(true)
     setTimeout(() => setFlash(false), 800)
+  }
+  function onUndo() {
+    if (!itemEntries.length) return
+    actions.removeSavingAreaEntry(itemEntries[itemEntries.length - 1].id)
+    setUndone((n) => n + 1)
+  }
+  function onRedo() {
+    if (!undone) return
+    actions.addSavingAreaEntry({ ownerFolderId: ownerId, sourceType: 'folder', sourceId: folder.id })
+    setUndone((n) => n - 1)
   }
   function onDelete() {
     if (records > 1) actions.removeSavingAreaEntry(itemEntries[itemEntries.length - 1].id)
@@ -104,8 +116,8 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
           <span className="fc__who">
             <div className="fc__name" title={path.join(' - ')}>{folder.name}</div>
             <div className="fc__sub">
-              <span>{lists.length} {lists.length === 1 ? 'checklist' : 'checklists'}</span>
-              <span>{kids.length} {kids.length === 1 ? 'folder' : 'folders'}</span>
+              <span><i className="fc__dot" />{lists.length} {lists.length === 1 ? 'checklist' : 'checklists'}</span>
+              <span><i className="fc__dot" />{kids.length} {kids.length === 1 ? 'folder' : 'folders'}</span>
             </div>
           </span>
         </button>
@@ -117,10 +129,12 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
         <button type="button" className="fc__add" disabled={open} onClick={onAddItem}>
           {flash ? '✓ Added' : '+ Add item'}
         </button>
-        <button type="button" className="fc__del" aria-label={records > 1 ? 'Remove one record' : 'Hide this folder'}
-          title={records > 1 ? 'Remove one record' : 'Hide this folder'} onClick={onDelete}>
-          <Svg d={TRASH_SVG} />
-        </button>
+        {depth > 0 && (
+          <button type="button" className="fc__del" aria-label={records > 1 ? 'Remove one record' : 'Hide this folder'}
+            title={records > 1 ? 'Remove one record' : 'Hide this folder'} onClick={onDelete}>
+            <Svg d={TRASH_SVG} />
+          </button>
+        )}
       </div>
 
       {open && (
@@ -167,10 +181,20 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
         </div>
       )}
 
-      <div className="fc__stats">
-        <div className="fc__stat fc__stat--s"><span>Spend</span><b>{formatINR(totals.expense)}</b></div>
-        <div className="fc__stat fc__stat--r"><span>Received</span><b>{formatINR(totals.income)}</b></div>
-        <div className="fc__stat fc__stat--v"><span>Savings</span><b>{formatINR(totals.saving)}</b></div>
+      <div className="fc__statrow">
+        <div className="fc__stats">
+          <div className="fc__stat fc__stat--s"><span>Spend</span><b>{formatINR(totals.expense)}</b></div>
+          <div className="fc__stat fc__stat--r"><span>Received</span><b>{formatINR(totals.income)}</b></div>
+          <div className="fc__stat fc__stat--v"><span>Savings</span><b>{formatINR(totals.saving)}</b></div>
+        </div>
+        <button type="button" className="fc__arrow" aria-label="Undo" disabled={!itemEntries.length} onClick={onUndo}
+          title={itemEntries.length ? 'Undo last + Add item' : 'Nothing to undo'}>
+          <Svg d="M5 12h14M5 12l6 6M5 12l6-6" size={15} />
+        </button>
+        <button type="button" className="fc__arrow" aria-label="Redo" disabled={!undone} onClick={onRedo}
+          title={undone ? 'Redo + Add item' : 'Nothing to redo'}>
+          <Svg d="M5 12h14M13 18l6-6M13 6l6 6" size={15} />
+        </button>
       </div>
     </div>
   )

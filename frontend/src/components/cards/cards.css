@@ -82,3 +82,14 @@
 .fc__row { flex-wrap: wrap; row-gap: 6px; }
 .fc__head { flex: 1 1 120px; }
 .fc__row .fc__edit, .fc__row .fc__add, .fc__row .fc__del { margin-left: 0; }
+
+/* Food & Beverages card look (from card_records.html): stacked dot sub-lines, stats + undo/redo arrows */
+.fc__sub { flex-direction:column; align-items:flex-start; gap:0; font-size:9.5px; line-height:1.25; overflow:hidden; }
+.fc__sub > span { display:flex; align-items:center; white-space:nowrap; }
+.fc__dot { display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--dc,#2f5fe0); margin-right:4px; flex-shrink:0; }
+.fc__statrow { display:flex; align-items:center; gap:4px; margin-top:6px; }
+.fc__statrow .fc__stats { flex:1; min-width:0; margin-top:0; }
+.fc__stat { padding:4px 8px; justify-content:center; line-height:1.25; }
+.fc__arrow { width:26px; height:26px; flex-shrink:0; padding:0; display:flex; align-items:center; justify-content:center; border-radius:7px; background:#fdfdfd; border:1px solid #d4d4d4; color:#222; font:inherit; cursor:pointer; }
+.fc__arrow:disabled { opacity:.35; cursor:default; }
+.fc__arrow:active:not(:disabled) { transform:scale(.95); }
