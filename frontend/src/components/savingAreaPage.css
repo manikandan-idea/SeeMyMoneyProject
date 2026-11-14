@@ -42,3 +42,6 @@
 /* clickable Saving Area card */
 .saving-area--link { cursor:pointer; }
 .saving-area--link:focus-visible { outline:2px solid #2563eb; outline-offset:2px; }
+
+.sa-page--embedded { max-width:none; margin:-4px 0 0; padding:0; }
+.sa-page--embedded .sa-top { border:1px solid #e5e7eb; box-shadow:none; }

@@ -33,7 +33,9 @@ const PENCIL = 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z'
 const BACK = 'M15 18l-6-6 6-6'
 const TRASH = 'M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6'
 
-function SavingAreaPage({ state, ownerId, title, onBack, onRemoveEntry, onUpdateDefault }) {
+const Wrap = ({ className, children }) => (className.includes('embedded') ? <div className={className}>{children}</div> : <main className={className}>{children}</main>)
+
+function SavingAreaPage({ state, ownerId, title, onBack, onRemoveEntry, onUpdateDefault, embedded = false }) {
   const [editingKey, setEditingKey] = useState(null)
   const [draft, setDraft] = useState('')
 
@@ -62,15 +64,15 @@ function SavingAreaPage({ state, ownerId, title, onBack, onRemoveEntry, onUpdate
   }
 
   return (
-    <main className="sa-page">
+    <Wrap className={embedded ? 'sa-page sa-page--embedded' : 'sa-page'}>
       <section className="sa-top" aria-label={`Saving Area of ${title}`}>
-        <div className="sa-head">
+        {!embedded && <div className="sa-head">
           <button type="button" className="sa-icon-btn" aria-label="Back" onClick={onBack}>
             <Icon d={BACK} size={22} />
           </button>
           <span className="sa-badge" aria-hidden="true">🐷</span>
           <h1>Saving Area · {title}</h1>
-        </div>
+        </div>}
 
         <div className="sa-totals">
           <div className="sa-total spend"><span>Spend</span><strong>{formatINR(totals.expense)}</strong></div>
@@ -169,7 +171,7 @@ function SavingAreaPage({ state, ownerId, title, onBack, onRemoveEntry, onUpdate
           )}
         </div>
       </section>
-    </main>
+    </Wrap>
   )
 }
 

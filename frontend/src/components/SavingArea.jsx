@@ -13,7 +13,7 @@ import { groupSavingAreaEntries } from '../domain/folderChecklist.js'
 import { formatINR } from '../utils/format.js'
 import './folders.css'
 
-function SavingArea({ entries, choices, onAdd, onOpen }) {
+function SavingArea({ entries, choices, onAdd, onOpen, title = '🐖 Saving Area', hint = 'Tap this card to open the Saving Area.', hideAdd = false, expanded }) {
   const [open, setOpen] = useState(false)
   const groups = groupSavingAreaEntries(entries)
   const total = choices.checklists.length + choices.folders.length
@@ -30,19 +30,22 @@ function SavingArea({ entries, choices, onAdd, onOpen }) {
       className={`saving-area${onOpen ? ' saving-area--link' : ''}`}
       aria-label="Saving Area"
       role={onOpen ? 'button' : undefined}
+      aria-expanded={expanded}
       tabIndex={onOpen ? 0 : undefined}
       onClick={onOpen}
       onKeyDown={onOpen ? (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onOpen() } } : undefined}
     >
       <div className="checklist__head">
-        <h3 className="checklist__title">🐖 Saving Area</h3>
-        <button type="button" className="btn btn--sm" onClick={(e) => { e.stopPropagation(); setOpen(true) }}>
-          + Add Items
-        </button>
+        <h3 className="checklist__title">{title}</h3>
+        {!hideAdd && (
+          <button type="button" className="btn btn--sm" onClick={(e) => { e.stopPropagation(); setOpen(true) }}>
+            + Add Items
+          </button>
+        )}
       </div>
-      {onOpen && <p className="modal__hint">Tap this card to open the Saving Area.</p>}
+      {onOpen && <p className="modal__hint">{hint}</p>}
       {groups.length === 0 ? (
-        <p className="other-panel__empty">Nothing in the Saving Area yet. Use “+ Add Items”.</p>
+        <p className="other-panel__empty">Nothing in the Saving Area yet.{hideAdd ? '' : ' Use “+ Add Items”.'}</p>
       ) : (
         groups.map((group) => (
           <div key={group.key} className="saving-area__row">

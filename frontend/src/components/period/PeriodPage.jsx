@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { formatINR } from '../../utils/format.js'
 import ChecklistSection from '../cards/ChecklistSection.jsx'
 import SavingArea from '../SavingArea.jsx'
+import SavingAreaPage from '../SavingAreaPage.jsx'
 import FolderCard from '../cards/FolderCard.jsx'
 import { makeId, pageOwnerId } from '../../domain/folderChecklist.js'
 import { calculatePeriodTotals, getPeriodRange } from '../../domain/analytics.js'
@@ -91,9 +92,25 @@ function AddFolderDialog({ tab, onConfirm, onCancel }) {
   )
 }
 
+// Folder title taken from the device clock: "Saturday, 14 November 2026" / "November 2026" / "2026".
+export function periodTitle(tabId, now = new Date()) {
+  const f = (opts) => now.toLocaleDateString('en-GB', opts)
+  if (tabId === 'today') return `${f({ weekday: 'long' })}, ${f({ day: 'numeric' })} ${f({ month: 'long' })} ${now.getFullYear()}`
+  if (tabId === 'month') return `${f({ month: 'long' })} ${now.getFullYear()}`
+  if (tabId === 'year') return String(now.getFullYear())
+  return null
+}
+
 function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpenSavingArea, actions, cardActions }) {
   const tab = TABS.find((t) => t.id === tabId) ?? TABS[0]
   const [adding, setAdding] = useState(false)
+  const [now, setNow] = useState(() => new Date())
+  const [savingOpen, setSavingOpen] = useState(false)
+  useEffect(() => { // keep the heading right when the day changes while the app stays open
+    const t = setInterval(() => setNow(new Date()), 60000)
+    return () => clearInterval(t)
+  }, [])
+  const heading = periodTitle(tabId, now)
   const [editing, setEditing] = useState(null) // { copyId, sourceId }: a Saving Area copy being edited
 
   const view = useMemo(() => {
@@ -142,6 +159,8 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpe
           </button>
         ))}
       </nav>
+
+      {heading && <h1 className="period__heading">{heading}</h1>}
 
       <div className="period__boxes">
         <div className="pbox pbox--expense"><span>Spend</span><strong>{formatINR(view.totals.expense)}</strong></div>
@@ -200,18 +219,27 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpe
         </>
       )}
 
-      {tab.usage && (
-        <SavingArea
-          entries={state.savingAreaEntries.filter((e) => e.ownerFolderId === pageOwnerId(tab.usage))}
-          choices={{
-            checklists: tab.usage === 'occasional' ? [] : view.checklists,
-            folders: view.folders,
-          }}
-          onOpen={onOpenSavingArea ? () => onOpenSavingArea(pageOwnerId(tab.usage), tab.label) : undefined}
-          onAdd={({ sourceType, sourceId }) =>
-            actions.addSavingAreaEntry({ ownerFolderId: pageOwnerId(tab.usage), sourceType, sourceId })}
-        />
-      )}
+      {tab.usage && (() => {
+        const owner = pageOwnerId(tab.usage)
+        return (
+          <>
+            <SavingArea
+              title={`📁 ${heading ?? tab.label}`}
+              hint={savingOpen ? 'Tap to collapse' : 'Tap to expand'}
+              hideAdd expanded={savingOpen}
+              entries={state.savingAreaEntries.filter((e) => e.ownerFolderId === owner)}
+              choices={{ checklists: [], folders: [] }}
+              onOpen={() => setSavingOpen((v) => !v)}
+              onAdd={() => {}}
+            />
+            {savingOpen && (
+              <SavingAreaPage embedded state={state} ownerId={owner} title={heading ?? tab.label}
+                onRemoveEntry={(id) => cardActions.removeSavingAreaEntry(id)}
+                onUpdateDefault={(id, amount) => cardActions.updateDefault(id, amount)} />
+            )}
+          </>
+        )
+      })()}
 
       {adding && (
         <AddFolderDialog tab={tab} onCancel={() => setAdding(false)}

@@ -33,7 +33,6 @@ import { useState } from 'react'
 import { formatINR } from '../../utils/format.js'
 import { calculateFolderTotals } from '../../domain/analytics.js'
 import { makeId } from '../../domain/folderChecklist.js'
-import SavingArea from '../SavingArea.jsx'
 import AdvancedSettings, { parseRecordCount } from './AdvancedSettings.jsx'
 import ChecklistSection from './ChecklistSection.jsx'
 import Svg from './Svg.jsx'
@@ -276,15 +275,6 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
             </div>
           </div>
 
-          {depth === 0 && (
-          <SavingArea
-            entries={own}
-            choices={{ checklists: lists, folders: kids }}
-            onOpen={onOpenSavingArea ? () => onOpenSavingArea(folder.id, folder.name) : undefined}
-            onAdd={({ sourceType, sourceId }) =>
-              actions.addSavingAreaEntry({ ownerFolderId: folder.id, sourceType, sourceId })}
-          />
-          )}
         </div>
       )}
 

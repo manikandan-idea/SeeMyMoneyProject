@@ -932,3 +932,5 @@ fieldset.field legend {
   .header__hidden-btn { padding: 6px 10px; }
 }
 body, .app { overflow-x: hidden; }
+
+.period__heading { margin:2px 2px 0; font-size:18px; font-weight:700; color:#111; }

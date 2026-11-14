@@ -1,0 +1,147 @@
+// Review-pass browser test (real Chromium + real IndexedDB, fresh profile).
+const { chromium } = require('/opt/npm-tools/node_modules/playwright')
+const S = '/tmp/claude-0/-home-claude/4bc65422-0490-5cf6-9c8b-b1da767d72f9/scratchpad'
+const W = Number(process.argv[2] || 390)
+const results = []
+const check = (name, got, want) => {
+  const ok = typeof want === 'function' ? want(got) : String(got) === String(want)
+  results.push(ok); console.log(ok ? 'PASS' : 'FAIL', '-', name, '=>', JSON.stringify(got), ok ? '' : `(want ${typeof want === 'function' ? 'fn' : want})`)
+}
+;(async () => {
+  const b = await chromium.launch()
+  const ctx = await b.newContext({ viewport: { width: W, height: 844 }, deviceScaleFactor: 1 })
+  const p = await ctx.newPage(); const errs = []
+  p.on('pageerror', (e) => errs.push('PAGEERR ' + e.message)); p.on('console', (m) => { if (m.type() === 'error') errs.push('CONSOLE ' + m.text()) })
+  p.on('dialog', (d) => d.accept())
+  await p.clock.install({ time: new Date('2026-11-12T12:00:00') })
+  await p.goto('http://localhost:5199/'); await p.waitForSelector('.period__tabs')
+  await p.clock.resume?.().catch(() => {})
+
+  // header: single compact row
+  const hh = await p.locator('.header').boundingBox()
+  check('header height (single row)', Math.round(hh.height), (h) => h < 64)
+  check('no horizontal overflow', await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), (n) => n <= 0)
+  check('opens on Today', await p.locator('.period__tab--on').textContent(), 'Today')
+  check('date line', await p.locator('.period__date').textContent(), (t) => /12 November 2026/.test(t))
+
+  // page checklist, undo / redo
+  await p.getByRole('button', { name: '+ Add checklist' }).first().click()
+  await p.fill('input[aria-label="Amount in rupees"]', '30'); await p.fill('input[aria-label="Checklist name (optional)"]', 'Milk')
+  await p.getByRole('button', { name: 'Create Checklist' }).click(); await p.waitForSelector('.cr__title:text("Milk")')
+  const milk = () => p.locator('.cr', { hasText: 'Milk' }).first()
+  await milk().locator('.cr__rec').click(); await milk().locator('.cr__rec').click(); await p.waitForTimeout(250)
+  check('Milk records after 2 taps', await milk().locator('.cr__count b').textContent(), 2)
+  await milk().getByRole('button', { name: 'Undo last record' }).click(); await p.waitForTimeout(250)
+  check('Milk records after undo', await milk().locator('.cr__count b').textContent(), 1)
+  await milk().getByRole('button', { name: 'Redo' }).click(); await p.waitForTimeout(250)
+  check('Milk records after redo', await milk().locator('.cr__count b').textContent(), 2)
+  check('Spend box today = 60', await p.locator('.pbox--expense strong').textContent(), (t) => /60/.test(t))
+  // different amount -> second card
+  await milk().getByRole('button', { name: 'Record a different amount' }).click()
+  await p.fill('.cr__input', '35'); await p.keyboard.press('Enter'); await p.waitForTimeout(300)
+  check('Milk cards (default + 35)', await p.locator('.cr', { hasText: 'Milk' }).count(), 2)
+  check('default card still 2 records, "3 in total"', await milk().locator('.cr__name').textContent(), (t) => /3 in total/.test(t))
+  const sub = p.locator('.cr--sub', { hasText: 'Milk' }).first()
+  check('sub-card records', await sub.locator('.cr__count b').textContent(), 1)
+  // edit that single record's amount
+  await sub.getByRole('button', { name: 'Edit amount of one record' }).click()
+  await p.fill('.cr__input', '40'); await p.keyboard.press('Enter'); await p.waitForTimeout(300)
+  check('sub-card now 40', await p.locator('.cr--sub', { hasText: 'Milk' }).first().locator('.cr__def').textContent(), (t) => /40/.test(t))
+  // trash on sub card removes the one record -> card disappears
+  await p.locator('.cr--sub', { hasText: 'Milk' }).first().getByRole('button', { name: 'Remove one record' }).click(); await p.waitForTimeout(300)
+  check('sub-card gone after removing its only record', await p.locator('.cr--sub', { hasText: 'Milk' }).count(), 0)
+  // trash on default with 2 records removes one record (not the checklist)
+  await milk().getByRole('button', { name: 'Remove one record' }).click(); await p.waitForTimeout(300)
+  check('Milk still exists, 1 record', await milk().locator('.cr__count b').textContent(), 1)
+  check('Milk spend today = 30', await p.locator('.pbox--expense strong').textContent(), (t) => /30/.test(t) && !/60/.test(t))
+  // trash at 1 record on default => delete checklist only (confirm accepted); history keeps the record
+  await milk().getByRole('button', { name: 'Delete this checklist' }).click(); await p.waitForTimeout(300)
+  check('Milk checklist deleted', await p.locator('.cr', { hasText: 'Milk' }).count(), 0)
+  check('money kept after checklist delete', await p.locator('.pbox--expense strong').textContent(), (t) => /30/.test(t))
+
+  // folder + checklist inside (a NEW folder; the sample data already has others)
+  await p.getByRole('button', { name: '+ Add Folder' }).click(); await p.getByRole('button', { name: 'Add Folder', exact: true }).last().click(); await p.waitForTimeout(300)
+  const names = await p.locator('.fc--d0 > .fc__row .fc__name').allTextContents()
+  const autoName = names.find((n) => /^Folder \d+$/.test(n))
+  check('auto folder name added', !!autoName, true)
+  const F = p.locator('.fc--d0').filter({ has: p.locator('.fc__row .fc__name', { hasText: new RegExp('^' + autoName + '$') }) }).first()
+  await F.locator('.fc__head').first().click(); await p.waitForSelector('.fc__inside')
+  await F.getByRole('button', { name: '+ Add checklist' }).click()
+  await F.locator('input[aria-label="Amount in rupees"]').fill('15'); await F.locator('input[aria-label="Checklist name (optional)"]').fill('Tea')
+  await F.getByRole('button', { name: 'Create Checklist' }).click(); await F.locator('.cr__title:text("Tea")').waitFor()
+  const tea = () => F.locator('.cr', { hasText: 'Tea' }).first()
+  for (let i = 0; i < 5; i++) await tea().locator('.cr__rec').click()
+  await tea().getByRole('button', { name: 'Record a different amount' }).click(); await p.fill('.cr__input', '20'); await p.keyboard.press('Enter'); await p.waitForTimeout(400)
+  check('Tea default records', await tea().locator('.cr__count b').textContent(), 5)
+  check('Tea 20 sub card', await F.locator('.cr--sub .cr__count b').textContent(), 1)
+  check('new folder card Spend = 95 (5x15 + 20)', await F.locator('.fc__stats .fc__stat--s b').textContent(), (t) => /95/.test(t))
+  check('checklist rows do not overflow at this width', await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), (n) => n <= 0)
+  await p.screenshot({ path: `${S}/r_folder_${W}.png`, fullPage: true })
+
+  // inner folder: auto name, + Add item raises Records, + Edit on a closed inner folder makes a twin, trash hides at 1
+  await F.getByRole('button', { name: '+ Add folder' }).click(); await F.getByRole('button', { name: 'Create Folder' }).click(); await p.waitForTimeout(400)
+  const inner = F.locator('.fc--inner').first()
+  check('inner folder exists with Records 1', await inner.locator('.fc__count b').first().textContent(), 1)
+  await inner.locator('.fc__add').first().click(); await p.waitForTimeout(300)
+  check('inner Records after + Add item', await inner.locator('.fc__count b').first().textContent(), 2)
+  const n0 = await F.locator('.fc--inner').count()
+  await inner.locator('.fc__edit').first().click(); await p.waitForTimeout(300)
+  check('twin folder created below it', await F.locator('.fc--inner').count(), n0 + 1)
+  await inner.locator('.fc__del').first().click(); await p.waitForTimeout(300)
+  check('trash at Records 2 removes one record', await F.locator('.fc--inner').first().locator('.fc__count b').first().textContent(), 1)
+  const before = await F.locator('.fc--inner').count()
+  await F.locator('.fc--inner').first().locator('.fc__del').first().click(); await p.waitForTimeout(300)
+  check('trash at Records 1 hides the folder', await F.locator('.fc--inner').count(), before - 1)
+
+  // Saving Area of the PAGE: add item, open, move to This Month
+  await p.locator('.saving-area').last().scrollIntoViewIfNeeded()
+  await p.locator('.saving-area').last().getByRole('button', { name: /Add Items/ }).click()
+  await p.locator('.saving-pick').first().click(); await p.getByRole('button', { name: 'Done', exact: true }).click(); await p.waitForTimeout(300)
+  await p.locator('.saving-area--link').last().click(); await p.waitForSelector('.sa-page')
+  check('Saving Area page has move button', await p.locator('.sa-move').textContent(), (t) => /This Month/.test(t))
+  await p.screenshot({ path: `${S}/r_saving_${W}.png` })
+  await p.locator('.sa-move').click(); await p.waitForTimeout(300)
+  check('Today Saving Area emptied by move', await p.locator('.sa-move').count(), 0)
+  await p.locator('.sa-head button').first().click(); await p.waitForSelector('.period__tabs')
+  await p.getByRole('button', { name: 'This Month' }).click(); await p.waitForTimeout(300)
+  check('This Month Saving Area now has the entry', await p.locator('.saving-area__row').count(), (n) => n >= 1)
+
+  // go to next day: This Month shows "Earlier days"
+  await p.clock.setFixedTime(new Date('2026-11-13T12:00:00')); await p.reload(); await p.waitForSelector('.period__tabs')
+  await p.getByRole('button', { name: 'Today' }).click(); await p.waitForTimeout(200)
+  check('new day: Today spend = 0 (yesterday not counted)', await p.locator('.pbox--expense strong').textContent(), (t) => /^₹0$/.test(t.trim()))
+  await p.getByRole('button', { name: 'This Month' }).click(); await p.waitForTimeout(200)
+  check('This Month spend keeps both days', await p.locator('.pbox--expense strong').textContent(), (t) => /125/.test(t))
+  check('Earlier days list shows 12 Nov', await p.locator('.prow__label').first().textContent(), (t) => /12 Nov 2026/.test(t))
+  await p.locator('.prow').first().click(); await p.waitForSelector('.rec-page')
+  check('History opened with day filter', await p.locator('.rec-filters input[type=date]').first().inputValue(), '2026-11-12')
+  check('History rows for that day', await p.locator('.rec-list > li').count(), (n) => n >= 7)
+  await p.locator('.rec-head button').first().click(); await p.waitForSelector('.period__tabs')
+  await p.getByRole('button', { name: 'This Year' }).click(); await p.waitForTimeout(200)
+  check('This Year earlier months list (sample data has older months)', await p.locator('.prow').count(), (n) => n >= 1)
+  check('earlier months do not include the current month', (await p.locator('.prow__label').allTextContents()).some((t) => /November 2026/.test(t)), false)
+
+  // new year: Settled shows 2026
+  await p.clock.setFixedTime(new Date('2027-01-05T12:00:00')); await p.reload(); await p.waitForSelector('.period__tabs')
+  await p.getByRole('button', { name: 'Settled Items' }).click(); await p.waitForTimeout(200)
+  check('Settled lists 2026', await p.locator('.prow__label').first().textContent(), (t) => /2026/.test(t))
+  check('Settled Spend box = the 2026 row Spend', await p.locator('.pbox--expense strong').textContent(), (await p.locator('.prow .prow__s').first().textContent()))
+  await p.screenshot({ path: `${S}/r_settled_${W}.png` })
+
+  // hidden folder can be restored
+  await p.getByRole('button', { name: 'Hidden folders' }).click(); await p.waitForSelector('.hidden-row')
+  check('hidden list has the hidden folder', await p.locator('.hidden-row').count(), (n) => n >= 1)
+  await p.locator('.hidden-row').first().getByRole('button', { name: /Restore/ }).click(); await p.waitForTimeout(300)
+  check('restored (list shrinks)', await p.locator('.hidden-row').count(), 0)
+  await p.locator('.section__toolbar button').first().click(); await p.waitForSelector('.period__tabs')
+
+  // search icon -> History focus
+  await p.getByRole('button', { name: 'Search records' }).click(); await p.waitForSelector('.rec-page')
+  check('search box focused', await p.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Search description')
+  check('final overflow', await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), (n) => n <= 0)
+
+  check('no console / page errors', errs, (e) => e.length === 0)
+  if (errs.length) console.log(errs)
+  console.log(results.every(Boolean) ? `ALL ${results.length} PASSED` : `${results.filter((x) => !x).length} FAILED of ${results.length}`)
+  await b.close()
+})().catch((e) => { console.log('FAIL', e.message); process.exit(1) })
