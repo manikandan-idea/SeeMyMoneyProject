@@ -934,3 +934,9 @@ fieldset.field legend {
 body, .app { overflow-x: hidden; }
 
 .period__heading { margin:2px 2px 0; font-size:18px; font-weight:700; color:#111; }
+
+/* Folder view / edit copy open: whole screen frozen + dimmed, only that card is live */
+.screen-lock { position:fixed; inset:0; background:rgba(15,23,42,.38); z-index:40; }
+.screen-lock__top { position:relative; z-index:41; }
+.linkbtn { background:none; border:0; padding:0; margin:2px 0 10px; color:#2f5fe0; font-size:14px; font-weight:600; text-decoration:underline; cursor:pointer; text-align:left; }
+.period__list > * { min-width:0; }

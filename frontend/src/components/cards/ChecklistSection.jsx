@@ -14,7 +14,7 @@
 //                             ← → arrows can undo / redo what happens here. Without it
 //                             (period page) deleting a checklist asks for confirmation.
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { getChecklistUsageCount, getLatestChecklistTransaction } from '../../domain/records.js'
 import { makeId } from '../../domain/folderChecklist.js'
 import AdvancedSettings, { parseRecordCount } from './AdvancedSettings.jsx'
@@ -29,7 +29,8 @@ function nextName(base, names) {
   return `${base} ${n}`
 }
 
-function ChecklistSection({ lists, state, trail = [], actions, onCreate, onHistory, variant = 'default', onAddToSaving }) {
+function ChecklistSection({ lists, state, trail = [], actions, onCreate, onHistory, variant = 'default', onAddToSaving, hideAdd = false }) {
+  const nameRef = useRef(null)
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
@@ -54,6 +55,7 @@ function ChecklistSection({ lists, state, trail = [], actions, onCreate, onHisto
     onCreate({
       id, title: name.trim() || auto, defaultAmount: Math.round(n * 100) / 100,
       transactionType: TYPE_TO_ID[type], recordCount: count,
+      ...(variant === 'page' ? {} : { baseRecord: 1 }),
     })
     onHistory?.({ t: 'addC', id })
     setAdding(false)
@@ -78,24 +80,29 @@ function ChecklistSection({ lists, state, trail = [], actions, onCreate, onHisto
     <div className="fc__sec">
       <div className="fc__sechead">
         <span className="fc__sectitle">Checklists</span>
-        <button type="button" className="fc__ibtn" onClick={openForm}>+ Add checklist</button>
+        {!hideAdd && <button type="button" className="fc__ibtn" onClick={openForm}>+ Add checklist</button>}
       </div>
-      {adding && (
-        <form className="fc__form" onSubmit={submit} aria-label="New checklist">
+      {adding && !hideAdd && (
+        <form className="fc__form fc__form--sheet" onSubmit={submit} aria-label="New checklist"
+          onKeyDown={(e) => { if (e.key === 'Escape') setAdding(false) }}>
           <div>
-            <div className="fc__lbl"><span>Amount (₹) <span style={{ color: '#c0262d' }}>*</span></span>
-              <button type="button" className="fc__x" aria-label="Cancel" onClick={() => setAdding(false)}><Svg d="M18 6L6 18M6 6l12 12" /></button>
-            </div>
+            <div className="fc__lbl"><span>Amount (₹)</span></div>
             <div className="fc__amtwrap">
               <span>₹</span>
               <input className={`fc__in fc__amt${bad ? ' fc__in--bad' : ''}`} type="number" min="0" step="any" inputMode="decimal"
                 placeholder="0" aria-label="Amount in rupees" autoFocus value={amount}
-                onChange={(e) => { setAmount(e.target.value); setBad(false) }} />
+                onChange={(e) => { setAmount(e.target.value); setBad(false) }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); nameRef.current?.focus() } }} />
+            </div>
+            <div className="fc__chips" role="group" aria-label="Quick amounts">
+              {[10, 20, 50, 100, 500].map((v) => (
+                <button key={v} type="button" className="fc__chip" onClick={() => { setAmount(String(v)); setBad(false) }}>₹{v}</button>
+              ))}
             </div>
           </div>
           <div>
-            <div className="fc__lbl">Checklist name <i>(optional)</i></div>
-            <input className="fc__in" maxLength={30} placeholder={`Auto: ${auto}`} value={name}
+            <div className="fc__lbl">Checklist name <i>optional</i></div>
+            <input ref={nameRef} className="fc__in" maxLength={30} placeholder={`Auto: ${auto}`} value={name}
               onChange={(e) => setName(e.target.value)} aria-label="Checklist name (optional)" />
           </div>
           <div>
@@ -111,6 +118,7 @@ function ChecklistSection({ lists, state, trail = [], actions, onCreate, onHisto
           <AdvancedSettings open={advOpen} onToggle={() => setAdvOpen((v) => !v)} value={rc} bad={rcBad}
             onChange={(v) => { setRc(v); setRcBad(false) }} />
           <button type="submit" className="fc__create">Create Checklist</button>
+          <p className="fc__hint">Enter moves to the next field. Enter on the last one creates it.</p>
         </form>
       )}
       <div className="fc__list">
@@ -118,7 +126,7 @@ function ChecklistSection({ lists, state, trail = [], actions, onCreate, onHisto
         {lists.map((c) => (
           <ChecklistRow key={c.id} checklist={c} trail={trail} variant={variant}
             onAddToSaving={() => onAddToSaving?.(c)}
-            records={getChecklistUsageCount(state, c.id)}
+            records={getChecklistUsageCount(state, c.id) + (c.baseRecord ?? 0)}
             latestTx={getLatestChecklistTransaction(state, c.id)}
             onRecord={(amountValue, source) => actions.record(c.id, amountValue, source)}
             onUpdateDefault={(v) => actions.updateDefault(c.id, v)}

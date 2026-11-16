@@ -11,9 +11,10 @@
 import { useEffect, useState } from 'react'
 import { groupSavingAreaEntries } from '../domain/folderChecklist.js'
 import { formatINR } from '../utils/format.js'
+import '../components/cards/cards.css'
 import './folders.css'
 
-function SavingArea({ entries, choices, onAdd, onOpen, title = '🐖 Saving Area', hint = 'Tap this card to open the Saving Area.', hideAdd = false, expanded }) {
+function SavingArea({ entries, choices, onAdd, onOpen, title = '🐖 Saving Area', hint = 'Tap this card to open the Saving Area.', hideAdd = false, expanded, onEditIcon }) {
   const [open, setOpen] = useState(false)
   const groups = groupSavingAreaEntries(entries)
   const total = choices.checklists.length + choices.folders.length
@@ -37,6 +38,12 @@ function SavingArea({ entries, choices, onAdd, onOpen, title = '🐖 Saving Area
     >
       <div className="checklist__head">
         <h3 className="checklist__title">{title}</h3>
+        {onEditIcon && (
+          <button type="button" className="sv__editbtn" aria-label="Open in folder view" title="Open in folder view"
+            onClick={(e) => { e.stopPropagation(); onEditIcon() }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 20h4L18.5 9.5a2.8 2.8 0 1 0-4-4L4 16v4M13.5 6.5l4 4" /></svg>
+          </button>
+        )}
         {!hideAdd && (
           <button type="button" className="btn btn--sm" onClick={(e) => { e.stopPropagation(); setOpen(true) }}>
             + Add Items

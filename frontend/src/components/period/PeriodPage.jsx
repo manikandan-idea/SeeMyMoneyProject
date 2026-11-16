@@ -16,7 +16,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { formatINR } from '../../utils/format.js'
 import ChecklistSection from '../cards/ChecklistSection.jsx'
 import SavingArea from '../SavingArea.jsx'
-import SavingAreaPage from '../SavingAreaPage.jsx'
+import SavingFolderView from '../cards/SavingFolderView.jsx'
 import FolderCard from '../cards/FolderCard.jsx'
 import { makeId, pageOwnerId } from '../../domain/folderChecklist.js'
 import { calculatePeriodTotals, getPeriodRange } from '../../domain/analytics.js'
@@ -38,6 +38,7 @@ const TYPES = [
 
 function AddFolderDialog({ tab, onConfirm, onCancel }) {
   const [name, setName] = useState('')
+  const [adv, setAdv] = useState(false)
   const [type, setType] = useState('expense') // Expense is the default
   const [frequency, setFrequency] = useState('multiple')
   const [error, setError] = useState('')
@@ -67,20 +68,27 @@ function AddFolderDialog({ tab, onConfirm, onCancel }) {
           <span>Folder name</span>
           <input autoFocus value={name} onChange={(e) => { setName(e.target.value); setError('') }} />
         </label>
-        <label className="field">
-          <span>Type</span>
-          <select value={type} onChange={(e) => setType(e.target.value)}>
-            {TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-          </select>
-        </label>
-        {tab.usage === 'occasional' && (
-          <label className="field">
-            <span>Use</span>
-            <select value={frequency} onChange={(e) => setFrequency(e.target.value)}>
-              <option value="multiple">Many times</option>
-              <option value="once">One time</option>
-            </select>
-          </label>
+        <button type="button" className="linkbtn" aria-expanded={adv} onClick={() => setAdv((v) => !v)}>
+          Advanced settings {adv ? '▴' : '▾'}
+        </button>
+        {adv && (
+          <>
+            <label className="field">
+              <span>Type</span>
+              <select value={type} onChange={(e) => setType(e.target.value)}>
+                {TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+              </select>
+            </label>
+            {tab.usage === 'occasional' && (
+              <label className="field">
+                <span>Use</span>
+                <select value={frequency} onChange={(e) => setFrequency(e.target.value)}>
+                  <option value="multiple">Many times</option>
+                  <option value="once">One time</option>
+                </select>
+              </label>
+            )}
+          </>
         )}
         {error && <p className="field__error" role="alert">{error}</p>}
         <div className="modal__actions">
@@ -160,6 +168,7 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpe
         ))}
       </nav>
 
+      {(editing || savingOpen) && <div className="screen-lock" aria-hidden="true" />}
       {heading && <h1 className="period__heading">{heading}</h1>}
 
       <div className="period__boxes">
@@ -189,7 +198,7 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpe
           <section className="period__card">
             <div className="period__head">
               <h2>Folders</h2>
-              <button type="button" className="btn" onClick={() => setAdding(true)}>Add Folder</button>
+              <button type="button" className="fc__ibtn" onClick={() => setAdding(true)}>+ Add folder</button>
             </div>
             {view.folders.length === 0 ? (
               <p className="period__empty">{tab.empty}</p>
@@ -199,17 +208,30 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpe
                   const copy = editing && editing.sourceId === f.id
                     ? state.folders.find((x) => x.id === editing.copyId) : null
                   return [
-                    <FolderCard key={f.id} state={state} folder={f} depth={0} ownerId={pageOwnerId(tab.usage)}
-                      actions={cardActions} onOpenSavingArea={onOpenSavingArea}
-                      onCopyEdit={() => {
-                        const copyId = makeId()
-                        cardActions.copyFolderToSavingArea({ folderId: f.id, ownerFolderId: pageOwnerId(tab.usage), id: copyId })
-                        setEditing({ copyId, sourceId: f.id })
-                      }} />,
-                    copy && (
-                      <FolderCard key={copy.id} state={state} folder={copy} depth={0} ownerId={pageOwnerId(tab.usage)}
+                    <div key={f.id}>
+                      <FolderCard state={state} folder={f} depth={0} ownerId={pageOwnerId(tab.usage)}
                         actions={cardActions} onOpenSavingArea={onOpenSavingArea}
-                        editingCopy onDone={() => setEditing(null)} />
+                        onMenuDelete={() => {
+                          if (window.confirm(`Delete "${f.name}"? It moves to Hidden, where you can restore it.`)) cardActions.hideFolder(f.id)
+                        }}
+                        onCopyEdit={() => {
+                          const copyId = makeId()
+                          cardActions.copyFolderToSavingArea({ folderId: f.id, ownerFolderId: pageOwnerId(tab.usage), id: copyId })
+                          setEditing({ copyId, sourceId: f.id })
+                        }} />
+                    </div>,
+                    copy && (
+                      <div key={copy.id} className="screen-lock__top">
+                      <FolderCard state={state} folder={copy} depth={0} ownerId={pageOwnerId(tab.usage)}
+                        actions={cardActions} onOpenSavingArea={onOpenSavingArea}
+                        editingCopy onDone={() => setEditing(null)}
+                        onBack={() => {
+                          // discard the copy: removing its only Saving Area entry also deletes the copy
+                          const entry = state.savingAreaEntries.find((e) => e.sourceType === 'folder' && e.sourceId === copy.id)
+                          if (entry) cardActions.removeSavingAreaEntry(entry.id)
+                          setEditing(null)
+                        }} />
+                      </div>
                     ),
                   ]
                 })}
@@ -221,23 +243,26 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpe
 
       {tab.usage && (() => {
         const owner = pageOwnerId(tab.usage)
-        return (
-          <>
-            <SavingArea
-              title={`📁 ${heading ?? tab.label}`}
-              hint={savingOpen ? 'Tap to collapse' : 'Tap to expand'}
-              hideAdd expanded={savingOpen}
-              entries={state.savingAreaEntries.filter((e) => e.ownerFolderId === owner)}
-              choices={{ checklists: [], folders: [] }}
-              onOpen={() => setSavingOpen((v) => !v)}
-              onAdd={() => {}}
-            />
-            {savingOpen && (
-              <SavingAreaPage embedded state={state} ownerId={owner} title={heading ?? tab.label}
-                onRemoveEntry={(id) => cardActions.removeSavingAreaEntry(id)}
-                onUpdateDefault={(id, amount) => cardActions.updateDefault(id, amount)} />
-            )}
-          </>
+        return savingOpen ? (
+          <div className="screen-lock__top">
+            <SavingFolderView state={state} ownerId={owner} title={heading ?? tab.label}
+              onClose={() => setSavingOpen(false)}
+              onAdd={(entry) => cardActions.addSavingAreaEntry({ ownerFolderId: owner, ...entry })}
+              onRemove={(id) => cardActions.removeSavingAreaEntry(id)}
+              onRestore={(entry) => cardActions.restoreSavingAreaEntry(entry)}
+              onUpdateDefault={(id, amount) => cardActions.updateDefault(id, amount)}
+              onUpdateEntries={(ids, amount) => cardActions.updateEntryAmount(ids, amount)} />
+          </div>
+        ) : (
+          <SavingArea
+            title={`📁 ${heading ?? tab.label}`}
+            hint="Tap to open"
+            hideAdd
+            entries={state.savingAreaEntries.filter((e) => e.ownerFolderId === owner)}
+            choices={{ checklists: [], folders: [] }}
+            onOpen={() => setSavingOpen(true)}
+            onAdd={() => {}}
+          />
         )
       })()}
 

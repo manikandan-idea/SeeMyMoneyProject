@@ -122,3 +122,30 @@
 .cr__menuitem--danger:hover { background:#fde8e8; }
 
 .fc__copynote { font-size:12px; color:#555; background:#fff7dc; border-bottom:1px solid #f0e2a8; padding:5px 10px; border-radius:10px 10px 0 0; }
+
+/* "+ Edit" copy: lifted card with a soft tint so it stands apart from the original */
+.fc.fc--copy { background:#f3f7ff; border-color:#bcd0f7; box-shadow:0 8px 22px rgba(47,95,224,.22), 0 2px 6px rgba(0,0,0,.08); }
+.fc--copy .fc__copynote { background:transparent; border-bottom:0; padding:2px 4px 6px; }
+.sv__editbtn { width:32px; height:32px; border-radius:10px; border:1px solid #d6d6d6; background:#fff; color:#222; display:inline-flex; align-items:center; justify-content:center; padding:0; cursor:pointer; flex-shrink:0; }
+.sv__empty { font-size:13px; color:#777; padding:6px 2px; }
+.sv__list { display:flex; flex-direction:column; gap:6px; }
+
+/* page folder card: stronger lift off the background */
+.fc.fc--page { border-color:rgba(47,95,224,.35); box-shadow:0 8px 20px rgba(47,95,224,.28), 0 2px 5px rgba(0,0,0,.12); }
+.fc__copynote { display:flex; align-items:center; gap:8px; }
+.fc__back { border:0; background:#fff; border:1px solid #cfd8ee; border-radius:999px; height:26px; padding:0 10px; font-size:12px; font-weight:600; color:#1f3a8a; flex-shrink:0; }
+.period__frozen { opacity:.45; filter:brightness(.8); pointer-events:none; user-select:none; transition:opacity .15s, filter .15s; }
+
+/* checklist creation form (sheet look) */
+.fc__form--sheet { gap:10px; padding:10px 12px 8px; }
+.fc__form--sheet .fc__lbl { font-size:12px; font-weight:700; color:#222; }
+.fc__form--sheet .fc__in { background:#f4f4f1; border:1px solid #e6e6e0; height:36px; font-size:14px; }
+.fc__form--sheet .fc__amt { height:40px; font-size:18px; font-weight:700; border:1px solid #e6e6e0; padding-left:30px; }
+.fc__form--sheet .fc__amtwrap span { font-size:16px; left:12px; }
+.fc__form--sheet .fc__type { height:30px; font-size:12px; }
+.fc__form--sheet .fc__create { height:40px; font-size:14px; }
+.fc__amt::-webkit-outer-spin-button, .fc__amt::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.fc__amt { -moz-appearance:textfield; appearance:textfield; }
+.fc__chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.fc__chip { height:26px; padding:0 10px; border-radius:999px; border:1px solid #dcdcd6; background:#fff; font-size:12px; color:#333; }
+.fc__hint { margin:0; text-align:center; font-size:10px; color:#999; }

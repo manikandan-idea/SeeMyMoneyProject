@@ -146,6 +146,9 @@ function buildChecklist(folder, input, at, id = makeId()) {
     transactionType: resolveTransactionType(folder, input.transactionType),
     frequency: resolveChecklistFrequency(folder, input.frequency),
     ...recordCountField(input.recordCount),
+    // A checklist made in a folder starts with 1 record (no money recorded). Records box =
+    // baseRecord + recorded transactions; at 0 the checklist is deleted (trash at 1 record).
+    ...(input.baseRecord === 1 ? { baseRecord: 1 } : {}),
     createdAt: at,
     updatedAt: at,
   }
@@ -363,7 +366,7 @@ export function addSavingAreaEntry(state, input) {
     titleSnapshot = source.name
   }
   const entry = {
-    id: makeId(),
+    id: input.id && !state.savingAreaEntries.some((e) => e.id === input.id) ? input.id : makeId(),
     sectionId: owner.sectionId,
     ownerFolderId: owner.id,
     sourceType: input.sourceType,
@@ -411,6 +414,29 @@ export function copyFolderToSavingArea(state, input) {
   return addSavingAreaEntry(withCopy, {
     ownerFolderId: input.ownerFolderId, sourceType: 'folder', sourceId: rootId,
   })
+}
+
+// Sets the amount of the given checklist entries (Saving Area folder view ✎). The reusable
+// checklist and its default are not changed.
+export function updateSavingAreaEntryAmount(state, entryIds, amount) {
+  if (!(Number(amount) > 0)) throw new Error('Amount must be a number greater than 0.')
+  const ids = new Set(entryIds)
+  const value = Math.round(Number(amount) * 100) / 100
+  return {
+    ...state,
+    savingAreaEntries: state.savingAreaEntries.map((e) => (ids.has(e.id) && e.sourceType === 'checklist' ? { ...e, amount: value } : e)),
+  }
+}
+
+// Puts a removed entry back (undo / redo in the Saving Area folder view). No-op when it exists
+// or its source is gone.
+export function restoreSavingAreaEntry(state, entry) {
+  if (!entry || state.savingAreaEntries.some((e) => e.id === entry.id)) return state
+  const sourceOk = entry.sourceType === 'checklist'
+    ? state.checklists.some((c) => c.id === entry.sourceId)
+    : state.folders.some((f) => f.id === entry.sourceId)
+  if (!sourceOk) return state
+  return { ...state, savingAreaEntries: [...state.savingAreaEntries, entry] }
 }
 
 // Removes exactly ONE Saving Area entry (by its own id). Nothing else changes:

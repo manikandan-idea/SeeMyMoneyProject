@@ -47,8 +47,13 @@ function nextName(base, names) {
   return `${base} ${n}`
 }
 
-function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], onOpenSavingArea, onTwin, onRemove, initiallyOpen = false, onCopyEdit, editingCopy = false, onDone }) {
+function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], onOpenSavingArea, onTwin, onRemove, initiallyOpen = false, onCopyEdit, editingCopy = false, onDone, onBack, onMenuDelete, tapView: tapViewProp }) {
+  const tapView = tapViewProp ?? Boolean(onCopyEdit) // period-page folders: tapping the card = use view
+  const [menu, setMenu] = useState(false)
   const [open, setOpen] = useState(Boolean(initiallyOpen || editingCopy))
+  // Tapping the card (not +Edit) opens a USE view: checklists / folders to record from, no
+  // "+ Add checklist" / "+ Add folder". +Edit (and twins / copies) open the full edit view.
+  const [editMode, setEditMode] = useState(Boolean(initiallyOpen || editingCopy))
   const [adding, setAdding] = useState(null) // 'f' | null (the checklist form lives in ChecklistSection)
   const [name, setName] = useState('')
   const [advOpen, setAdvOpen] = useState(false)
@@ -180,6 +185,7 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
     if (editingCopy) { onDone?.(); return }
     if (depth === 0 && onCopyEdit && !open) { onCopyEdit(); return }
     if (depth > 0 && onTwin && !open) { onTwin(); return }
+    setEditMode(true)
     setOpen((v) => !v)
     if (open) closeForm()
   }
@@ -203,18 +209,23 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
     }
   }
 
-  const cls = `fc fc--d${depth % 3}${depth > 0 ? ' fc--inner' : ''}`
+  const cls = `fc fc--d${depth % 3}${depth > 0 ? ' fc--inner' : ''}${editingCopy ? ' fc--copy' : ''}${onCopyEdit ? ' fc--page' : ''}`
   const delTitle = records > 1 ? 'Remove one record' : 'Hide this folder'
   return (
     <div className={cls}>
-      {editingCopy && <div className="fc__copynote">Editing a copy · saved in the Saving Area, the original is unchanged</div>}
+      {editingCopy && (
+        <div className="fc__copynote">
+          {onBack && <button type="button" className="fc__back" onClick={onBack} title="Discard this copy and go back, nothing changes">← Back</button>}
+          <span>Editing a copy · saved in the Saving Area, the original is unchanged</span>
+        </div>
+      )}
       <div className="fc__row">
         {depth > 0 && (
           <div className="fc__count" role="status" aria-label={`Records: ${records}`}>
             <b>{records}</b><span>Records</span>
           </div>
         )}
-        <button type="button" className="fc__head" aria-label={`Open folder ${folder.name}`} onClick={() => setOpen(true)}>
+        <button type="button" className="fc__head" aria-label={`Open folder ${folder.name}`} onClick={() => { if (!open) { setEditMode(!tapView); setOpen(true) } }}>
           <span className="fc__tile"><Svg d={FOLDER_SVG} size={20} /></span>
           <span className="fc__who">
             <div className="fc__name" title={path.join(' - ') + (count > 1 ? ` · Record count ${count}` : '')}>{folder.name}</div>
@@ -232,6 +243,20 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
         <button type="button" className="fc__add" disabled={open || editingCopy} onClick={onAddItem}>
           {flash ? '✓ Added' : '+ Add item'}
         </button>
+        {onMenuDelete && (
+          <div className="cr__menuwrap">
+            <button type="button" className="cr__more" aria-label="More options" aria-haspopup="menu" aria-expanded={menu}
+              onClick={() => setMenu((v) => !v)} onBlur={() => setTimeout(() => setMenu(false), 150)}>
+              <Svg d="M12 5.5v.01M12 12v.01M12 18.5v.01" size={20} />
+            </button>
+            {menu && (
+              <div className="cr__menu" role="menu">
+                <button type="button" role="menuitem" className="cr__menuitem cr__menuitem--danger"
+                  onClick={() => { setMenu(false); onMenuDelete() }}>Delete folder</button>
+              </div>
+            )}
+          </div>
+        )}
         {depth > 0 && (
           <button type="button" className="fc__del" aria-label={delTitle} title={delTitle} onClick={onDelete}>
             <Svg d={TRASH_SVG} />
@@ -241,13 +266,13 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
 
       {open && (
         <div className="fc__inside">
-          <ChecklistSection lists={lists} state={state} trail={path} actions={actions} onHistory={log}
+          <ChecklistSection lists={lists} state={state} trail={path} actions={actions} onHistory={log} hideAdd={!editMode}
             onCreate={(p) => actions.createChecklist({ folderId: folder.id, sectionId: folder.sectionId, ...p })} />
 
           <div className="fc__sec">
             <div className="fc__sechead">
               <span className="fc__sectitle">Folders</span>
-              <button type="button" className="fc__ibtn" onClick={() => openForm('f')}>+ Add folder</button>
+              {editMode && <button type="button" className="fc__ibtn" onClick={() => openForm('f')}>+ Add folder</button>}
             </div>
             {adding === 'f' && (
               <form className="fc__form" onSubmit={createFolder} aria-label="New folder">
@@ -267,7 +292,7 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
               {kids.length === 0 && <div className="fc__empty">No folders yet</div>}
               {kids.map((k) => (
                 <FolderCard key={k.id} state={state} folder={k} depth={depth + 1} ownerId={folder.id}
-                  trail={path} actions={actions} onOpenSavingArea={onOpenSavingArea}
+                  trail={path} actions={actions} onOpenSavingArea={onOpenSavingArea} tapView={tapView}
                   initiallyOpen={fresh.has(k.id)}
                   onTwin={() => twinOf(k)}
                   onRemove={() => removeKid(k)} />
