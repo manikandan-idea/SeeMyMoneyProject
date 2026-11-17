@@ -149,3 +149,10 @@
 .fc__chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
 .fc__chip { height:26px; padding:0 10px; border-radius:999px; border:1px solid #dcdcd6; background:#fff; font-size:12px; color:#333; }
 .fc__hint { margin:0; text-align:center; font-size:10px; color:#999; }
+
+/* tapped folder card: opens as its own page (frozen background, big Back) */
+.fp { position:fixed; inset:0; z-index:60; background:#eef1f7; overflow-y:auto; }
+.fp__panel { max-width:460px; margin:0 auto; padding:14px 12px 28px; display:flex; flex-direction:column; gap:12px; }
+.fp__back { align-self:flex-start; height:40px; padding:0 18px; border-radius:999px; border:1px solid #cfd8ee; background:#fff; color:#1f3a8a; font-size:16px; font-weight:700; box-shadow:0 2px 6px rgba(0,0,0,.12); cursor:pointer; }
+.fp .fc { box-shadow:0 6px 18px rgba(47,95,224,.22), 0 2px 5px rgba(0,0,0,.1); }
+.fpage { display:flex; flex-direction:column; gap:12px; } .fpage .fp__back { margin-bottom:0; }

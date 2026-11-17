@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { formatINR } from '../../utils/format.js'
 import ChecklistSection from '../cards/ChecklistSection.jsx'
 import SavingArea from '../SavingArea.jsx'
+import { parseRecordCount } from '../cards/AdvancedSettings.jsx'
 import SavingFolderView from '../cards/SavingFolderView.jsx'
 import FolderCard from '../cards/FolderCard.jsx'
 import { makeId, pageOwnerId } from '../../domain/folderChecklist.js'
@@ -36,10 +37,12 @@ const TYPES = [
   { id: 'saving', label: 'Savings' },
 ]
 
-function AddFolderDialog({ tab, onConfirm, onCancel }) {
+export function AddFolderDialog({ tab, onConfirm, onCancel, lockType = false }) {
   const [name, setName] = useState('')
   const [adv, setAdv] = useState(false)
   const [type, setType] = useState('expense') // Expense is the default
+  const [rc, setRc] = useState('1')
+  const [rcBad, setRcBad] = useState(false)
   const [frequency, setFrequency] = useState('multiple')
   const [error, setError] = useState('')
   useEffect(() => {
@@ -51,7 +54,10 @@ function AddFolderDialog({ tab, onConfirm, onCancel }) {
   function submit(e) {
     e.preventDefault()
     if (!name.trim()) { setError('Please enter a folder name.'); return }
+    const recordCount = parseRecordCount(rc)
+    if (recordCount === null) { setAdv(true); setRcBad(true); return }
     onConfirm({
+      recordCount,
       name: name.trim(),
       sectionId: type,
       usage: tab.usage,
@@ -73,13 +79,19 @@ function AddFolderDialog({ tab, onConfirm, onCancel }) {
         </button>
         {adv && (
           <>
-            <label className="field">
+            {!lockType && <label className="field">
               <span>Type</span>
               <select value={type} onChange={(e) => setType(e.target.value)}>
                 {TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
               </select>
+            </label>}
+            <label className="field">
+              <span>Record count</span>
+              <input type="number" min="1" max="999" step="1" inputMode="numeric" aria-label="Record count" value={rc}
+                style={rcBad ? { borderColor: '#c0262d' } : undefined}
+                onChange={(e) => { setRc(e.target.value); setRcBad(false) }} />
             </label>
-            {tab.usage === 'occasional' && (
+            {tab.usage === 'occasional' && !lockType && (
               <label className="field">
                 <span>Use</span>
                 <select value={frequency} onChange={(e) => setFrequency(e.target.value)}>

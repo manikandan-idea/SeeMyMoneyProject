@@ -311,8 +311,8 @@ function App() {
         onOpenFolder={(folder) =>
           setView({ name: 'section', sectionId: folder.sectionId, folderId: folder.id, returnTab: view.tab })
         }
-        onAddFolder={({ name, sectionId, usage, frequency }) =>
-          run((s) => createFolder(s, { sectionId, parentFolderId: null, name, usage, frequency, othersEnabled: false }))
+        onAddFolder={({ name, sectionId, usage, frequency, recordCount }) =>
+          run((s) => createFolder(s, { sectionId, parentFolderId: null, name, usage, frequency, recordCount, othersEnabled: false }))
         }
         actions={pageActions}
         cardActions={cardActions}

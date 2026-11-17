@@ -55,7 +55,7 @@ function ChecklistSection({ lists, state, trail = [], actions, onCreate, onHisto
     onCreate({
       id, title: name.trim() || auto, defaultAmount: Math.round(n * 100) / 100,
       transactionType: TYPE_TO_ID[type], recordCount: count,
-      ...(variant === 'page' ? {} : { baseRecord: 1 }),
+      ...(variant === 'page' ? {} : { baseRecord: count }),
     })
     onHistory?.({ t: 'addC', id })
     setAdding(false)

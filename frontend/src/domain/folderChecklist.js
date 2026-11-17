@@ -148,7 +148,7 @@ function buildChecklist(folder, input, at, id = makeId()) {
     ...recordCountField(input.recordCount),
     // A checklist made in a folder starts with 1 record (no money recorded). Records box =
     // baseRecord + recorded transactions; at 0 the checklist is deleted (trash at 1 record).
-    ...(input.baseRecord === 1 ? { baseRecord: 1 } : {}),
+    ...(Number.isInteger(input.baseRecord) && input.baseRecord >= 1 && input.baseRecord <= 999 ? { baseRecord: input.baseRecord } : {}),
     createdAt: at,
     updatedAt: at,
   }

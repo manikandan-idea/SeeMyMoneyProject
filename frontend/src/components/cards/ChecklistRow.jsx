@@ -66,7 +66,7 @@ function ChecklistRow({
   const tip = [...trail, checklist.title].join(' - ')
     + ` · ${TYPE_LABEL[checklist.transactionType] || 'Spend'}`
     + (count > 1 ? ` · Record count ${count}` : '')
-  const trashTitle = records > 1 ? 'Remove one record' : 'Delete this checklist'
+  const trashTitle = records > 1 && latestTx ? 'Remove one record' : 'Delete this checklist'
 
   if (mode) {
     return (

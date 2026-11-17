@@ -29,12 +29,14 @@
 //          createChecklist, updateDefault, deleteChecklist, deleteChecklistWithRecords,
 //          restoreChecklist, recordOtherRow, removeRecord, restoreRecord, record
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { formatINR } from '../../utils/format.js'
 import { calculateFolderTotals } from '../../domain/analytics.js'
 import { makeId } from '../../domain/folderChecklist.js'
 import AdvancedSettings, { parseRecordCount } from './AdvancedSettings.jsx'
 import ChecklistSection from './ChecklistSection.jsx'
+import FolderPage from './FolderPage.jsx'
 import Svg from './Svg.jsx'
 import './cards.css'
 
@@ -47,13 +49,20 @@ function nextName(base, names) {
   return `${base} ${n}`
 }
 
-function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], onOpenSavingArea, onTwin, onRemove, initiallyOpen = false, onCopyEdit, editingCopy = false, onDone, onBack, onMenuDelete, tapView: tapViewProp }) {
+function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], onOpenSavingArea, onTwin, onRemove, initiallyOpen = false, onCopyEdit, editingCopy = false, onDone, onBack, onMenuDelete, tapView: tapViewProp, pageMode = false }) {
+  const [pageOpen, setPageOpen] = useState(false) // tapped card -> this folder as its own full page
   const tapView = tapViewProp ?? Boolean(onCopyEdit) // period-page folders: tapping the card = use view
   const [menu, setMenu] = useState(false)
-  const [open, setOpen] = useState(Boolean(initiallyOpen || editingCopy))
+  const [open, setOpen] = useState(Boolean(initiallyOpen || editingCopy || pageMode))
   // Tapping the card (not +Edit) opens a USE view: checklists / folders to record from, no
   // "+ Add checklist" / "+ Add folder". +Edit (and twins / copies) open the full edit view.
-  const [editMode, setEditMode] = useState(Boolean(initiallyOpen || editingCopy))
+  const [editMode, setEditMode] = useState(Boolean((initiallyOpen || editingCopy) && !pageMode))
+  useEffect(() => {
+    if (!pageOpen) return undefined
+    const onKey = (e) => { if (e.key === 'Escape') setPageOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [pageOpen])
   const [adding, setAdding] = useState(null) // 'f' | null (the checklist form lives in ChecklistSection)
   const [name, setName] = useState('')
   const [advOpen, setAdvOpen] = useState(false)
@@ -73,7 +82,8 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
   const itemEntries = state.savingAreaEntries.filter(
     (e) => e.ownerFolderId === ownerId && e.sourceType === 'folder' && e.sourceId === folder.id,
   )
-  const records = 1 + itemEntries.length
+  // Records = starting count (Advanced settings, default 1) + "+ Add item" taps
+  const records = (folder.recordCount ?? 1) + itemEntries.length
   const lastEntry = itemEntries[itemEntries.length - 1]
   const count = folder.recordCount ?? 1
 
@@ -196,7 +206,7 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
     setTimeout(() => setFlash(false), 800)
   }
   function onDelete() {
-    if (records > 1) {
+    if (itemEntries.length > 0) {
       // removes ONE record: the latest "+ Add item" entry (and its history line, if any)
       actions.removeSavingAreaEntry(lastEntry.id)
       setUndoStack((s) => {
@@ -210,7 +220,7 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
   }
 
   const cls = `fc fc--d${depth % 3}${depth > 0 ? ' fc--inner' : ''}${editingCopy ? ' fc--copy' : ''}${onCopyEdit ? ' fc--page' : ''}`
-  const delTitle = records > 1 ? 'Remove one record' : 'Hide this folder'
+  const delTitle = itemEntries.length > 0 ? 'Remove one record' : 'Hide this folder'
   return (
     <div className={cls}>
       {editingCopy && (
@@ -225,7 +235,11 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
             <b>{records}</b><span>Records</span>
           </div>
         )}
-        <button type="button" className="fc__head" aria-label={`Open folder ${folder.name}`} onClick={() => { if (!open) { setEditMode(!tapView); setOpen(true) } }}>
+        <button type="button" className="fc__head" aria-label={`Open folder ${folder.name}`} onClick={() => {
+          if (pageMode) return
+          if (tapView) { setPageOpen(true); return }
+          if (!open) { setEditMode(true); setOpen(true) }
+        }}>
           <span className="fc__tile"><Svg d={FOLDER_SVG} size={20} /></span>
           <span className="fc__who">
             <div className="fc__name" title={path.join(' - ') + (count > 1 ? ` · Record count ${count}` : '')}>{folder.name}</div>
@@ -235,14 +249,14 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
             </div>
           </span>
         </button>
-        <button type="button" className={`fc__edit${open ? ' fc__edit--on' : ''}`} aria-expanded={open}
+        {!pageMode && <button type="button" className={`fc__edit${open ? ' fc__edit--on' : ''}`} aria-expanded={open}
           title={open ? (editingCopy ? 'Finish editing the copy' : 'Close folder') : (depth > 0 && onTwin) || (depth === 0 && onCopyEdit) ? 'Edit a copy of this folder in the Saving Area' : 'Open folder'}
           onClick={onEdit}>
           {open ? '✓ Done' : '+ Edit'}
-        </button>
-        <button type="button" className="fc__add" disabled={open || editingCopy} onClick={onAddItem}>
+        </button>}
+        {!pageMode && <button type="button" className="fc__add" disabled={open || editingCopy} onClick={onAddItem}>
           {flash ? '✓ Added' : '+ Add item'}
-        </button>
+        </button>}
         {onMenuDelete && (
           <div className="cr__menuwrap">
             <button type="button" className="cr__more" aria-label="More options" aria-haspopup="menu" aria-expanded={menu}
@@ -257,7 +271,7 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
             )}
           </div>
         )}
-        {depth > 0 && (
+        {depth > 0 && !pageMode && (
           <button type="button" className="fc__del" aria-label={delTitle} title={delTitle} onClick={onDelete}>
             <Svg d={TRASH_SVG} />
           </button>
@@ -318,6 +332,16 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
           <Svg d="M5 12h14M13 18l6-6M13 6l6 6" size={15} />
         </button>
       </div>
+
+      {pageOpen && createPortal(
+        <div className="fp" role="dialog" aria-modal="true" aria-label={`Folder ${folder.name}`}>
+          <div className="fp__panel">
+            <FolderPage state={state} folder={folder} actions={actions} onOpenSavingArea={onOpenSavingArea}
+              onBack={() => setPageOpen(false)} />
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }
