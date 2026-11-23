@@ -15,7 +15,8 @@
 //                             (period page) deleting a checklist asks for confirmation.
 
 import { useRef, useState } from 'react'
-import { getChecklistUsageCount, getLatestChecklistTransaction } from '../../domain/records.js'
+import { getLatestChecklistTransaction } from '../../domain/records.js'
+import { checklistRecordCount } from '../../domain/analytics.js'
 import { makeId } from '../../domain/folderChecklist.js'
 import AdvancedSettings, { parseRecordCount } from './AdvancedSettings.jsx'
 import ChecklistRow from './ChecklistRow.jsx'
@@ -126,10 +127,13 @@ function ChecklistSection({ lists, state, trail = [], actions, onCreate, onHisto
         {lists.map((c) => (
           <ChecklistRow key={c.id} checklist={c} trail={trail} variant={variant}
             onAddToSaving={() => onAddToSaving?.(c)}
-            records={getChecklistUsageCount(state, c.id) + (c.baseRecord ?? 0)}
+            records={checklistRecordCount(state, c)}
             latestTx={getLatestChecklistTransaction(state, c.id)}
             onRecord={(amountValue, source) => actions.record(c.id, amountValue, source)}
-            onUpdateDefault={(v) => actions.updateDefault(c.id, v)}
+            onUpdateDefault={(v) => {
+              onHistory?.({ t: 'amt', id: c.id, from: c.defaultAmount, to: v })
+              actions.updateDefault(c.id, v)
+            }}
             onOther={(amountValue) => (variant === 'page' ? onAddToSaving?.(c, amountValue) : addOtherRow(c, amountValue))}
             onRemoveRecord={(txId) => actions.removeRecord(txId)}
             onRestoreRecord={(tx) => actions.restoreRecord(tx)}

@@ -202,3 +202,77 @@ export function calculateFolderBreakdown(state, sectionId, filters = {}) {
     .map((g) => ({ ...g, total: round2(g.total) }))
     .sort((a, b) => b.total - a.total)
 }
+
+// ---------- folder / page value (what the Spend / Received / Savings boxes show) ----------
+//
+// ONE rule for every folder card, folder page, floating sheet, Saving Area view and period page:
+//
+//   value(page or folder) = what its Saving Area holds, nothing else
+//     * a checklist entry counts its own amount (or the checklist default) under the checklist's type
+//     * a folder entry counts that folder's value (its own Saving Area) once per entry
+//
+// Nothing is added twice: an inner folder or a checklist that is not in the Saving Area adds
+// nothing, and a folder is never counted both as itself and as an entry. Because this is derived
+// from the current state on every render, any change (amount edited, record added or removed,
+// inner folder changed) shows in the card, in every parent folder and on the page at once.
+const round = (n) => Math.round((n + Number.EPSILON) * 100) / 100
+const emptyValue = () => ({ income: 0, expense: 0, saving: 0 })
+
+function addValue(out, v) {
+  out.income += v.income
+  out.expense += v.expense
+  out.saving += v.saving
+}
+
+// Records box of a checklist row = starting records + recorded transactions + entries added.
+export function checklistRecordCount(state, checklist) {
+  const id = checklist.id
+  const recorded = transactionsOf(state).filter((t) => t.checklistId === id).length
+  const added = (state?.savingAreaEntries ?? []).filter((e) => e.sourceType === 'checklist' && e.sourceId === id).length
+  return (checklist.baseRecord ?? 0) + recorded + added
+}
+
+// Records of an inner folder inside `parentId` = its record count + "+ Add item" taps.
+export function folderRecordCount(state, folder, parentId = folder.parentFolderId) {
+  return (folder.recordCount ?? 1) + folderItemEntries(state, folder, parentId).length
+}
+
+// Entries in `ownerId`'s Saving Area that are copies of `folder` ("+ Add item" / "+ Edit" taps).
+export function folderItemEntries(state, folder, ownerId) {
+  const folders = state?.folders ?? []
+  return (state?.savingAreaEntries ?? []).filter((e) => {
+    if (e.ownerFolderId !== ownerId || e.sourceType !== 'folder') return false
+    if (e.sourceId === folder.id) return true
+    return folders.find((f) => f.id === e.sourceId)?.copiedFrom === folder.id
+  })
+}
+
+function valueOf(state, ownerId, seen) {
+  const out = emptyValue()
+  if (seen.has(ownerId)) return out // safety: never loop
+  const next = new Set(seen).add(ownerId)
+  for (const e of state?.savingAreaEntries ?? []) {
+    if (e.ownerFolderId !== ownerId) continue
+    if (e.sourceType === 'checklist') {
+      // the entry carries its own snapshot; the checklist is only a fallback for very old entries
+      const c = (state.checklists ?? []).find((x) => x.id === e.sourceId)
+      const type = e.transactionType ?? c?.transactionType
+      if (out[type] !== undefined) out[type] += Number(e.amount ?? c?.defaultAmount) || 0
+    } else {
+      const f = (state.folders ?? []).find((x) => x.id === e.sourceId)
+      if (f && !f.hidden) addValue(out, valueOf(state, f.id, next))
+    }
+  }
+  return out
+}
+
+// Value of a page or folder (see the rule above). Same shape as calculateFolderTotals().
+export function calculateOwnerValue(state, ownerId) {
+  const v = valueOf(state, ownerId, new Set())
+  return { income: round(v.income), expense: round(v.expense), saving: round(v.saving) }
+}
+
+// What a folder card / folder page shows: the same numbers everywhere.
+export function calculateFolderView(state, folderId) {
+  return calculateOwnerValue(state, folderId)
+}

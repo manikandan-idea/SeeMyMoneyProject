@@ -19,6 +19,7 @@ import {
   copyFolderToSavingArea,
   updateSavingAreaEntryAmount,
   restoreSavingAreaEntry,
+  mergeIdenticalCopy,
   createChecklistTemplate,
   updateChecklistTemplate,
   deleteChecklistTemplate,
@@ -34,7 +35,7 @@ import {
   restoreTransaction,
   getChecklistUsageCount,
 } from './domain/records.js'
-import { calculateSectionTotals, calculateFolderTotals } from './domain/analytics.js'
+import { calculateSectionTotals, calculateFolderTotals, calculateFolderView } from './domain/analytics.js'
 import './App.css'
 
 const SECTION_META = [
@@ -154,7 +155,8 @@ function App() {
     removeSavingAreaEntry: (id) => run((s) => removeSavingAreaEntry(s, id)),
     copyFolderToSavingArea: (input) => run((s) => copyFolderToSavingArea(s, input)),
     updateEntryAmount: (ids, amount) => run((s) => updateSavingAreaEntryAmount(s, ids, amount)),
-    restoreSavingAreaEntry: (entry) => run((s) => restoreSavingAreaEntry(s, entry)),
+    mergeIdenticalCopy: (ownerFolderId, copyId) => run((s) => mergeIdenticalCopy(s, ownerFolderId, copyId)),
+    restoreSavingAreaEntry: (entry, tree) => run((s) => restoreSavingAreaEntry(s, entry, tree)),
     createChecklist: (input) => run((s) => createChecklistTemplate(s, input)),
     updateDefault: (id, defaultAmount) => run((s) => updateChecklistTemplate(s, id, { defaultAmount })),
     deleteChecklist: (id) => run((s) => deleteChecklistTemplate(s, id)),
@@ -240,7 +242,8 @@ function App() {
       return { total: r.total, count: r.count }
     }
     const t = calculateFolderTotals(state, folderId)
-    return { total: t[sectionId], count: t.count, income: t.income, expense: t.expense, saving: t.saving }
+    const v = calculateFolderView(state, folderId) // same numbers as the folder card
+    return { total: v[sectionId], count: t.count, income: v.income, expense: v.expense, saving: v.saving }
   }
 
   let body
@@ -277,7 +280,7 @@ function App() {
         title={view.title}
         onBack={() => setView(back)}
         onRemoveEntry={(id) => run((s) => removeSavingAreaEntry(s, id))}
-        onUpdateDefault={(id, defaultAmount) => run((s) => updateChecklistTemplate(s, id, { defaultAmount }))}
+        onUpdateEntries={(ids, amount) => run((s) => updateSavingAreaEntryAmount(s, ids, amount))}
       />
     )
   } else if (view.name === 'history') {
@@ -311,8 +314,8 @@ function App() {
         onOpenFolder={(folder) =>
           setView({ name: 'section', sectionId: folder.sectionId, folderId: folder.id, returnTab: view.tab })
         }
-        onAddFolder={({ name, sectionId, usage, frequency, recordCount }) =>
-          run((s) => createFolder(s, { sectionId, parentFolderId: null, name, usage, frequency, recordCount, othersEnabled: false }))
+        onAddFolder={({ id, name, sectionId, usage, frequency, recordCount }) =>
+          run((s) => createFolder(s, { id, sectionId, parentFolderId: null, name, usage, frequency, recordCount, othersEnabled: false }))
         }
         actions={pageActions}
         cardActions={cardActions}

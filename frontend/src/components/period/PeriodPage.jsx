@@ -16,6 +16,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { formatINR } from '../../utils/format.js'
 import ChecklistSection from '../cards/ChecklistSection.jsx'
 import SavingArea from '../SavingArea.jsx'
+import { useEntryHistory } from '../cards/entryHistory.js'
+import { calculateOwnerValue } from '../../domain/analytics.js'
 import { parseRecordCount } from '../cards/AdvancedSettings.jsx'
 import SavingFolderView from '../cards/SavingFolderView.jsx'
 import FolderCard from '../cards/FolderCard.jsx'
@@ -132,6 +134,8 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpe
   }, [])
   const heading = periodTitle(tabId, now)
   const [editing, setEditing] = useState(null) // { copyId, sourceId }: a Saving Area copy being edited
+  const pageOwner = tab.usage ? pageOwnerId(tab.usage) : 'page:none'
+  const pageHistory = useEntryHistory(pageOwner, cardActions, state)
 
   const view = useMemo(() => {
     const folders = state.folders.filter(
@@ -151,6 +155,9 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpe
       totals = { income: 0, expense: 0, saving: 0 }
     } else {
       totals = calculatePeriodTotals(state, range)
+    }
+    if (tab.usage) { // the page snapshot = what its Saving Area holds (checklist entries + whole folders)
+      totals = calculateOwnerValue(state, pageOwnerId(tab.usage))
     }
     // Checklist rows: reusable templates whose frequency matches this page.
     const folderById = new Map(state.folders.map((f) => [f.id, f]))
@@ -202,7 +209,8 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpe
           {tab.usage !== 'occasional' && (
             <section className="period__card">
               <ChecklistSection lists={view.checklists} state={state} actions={cardActions} variant="page"
-                onAddToSaving={(c, amount) => actions.addSavingAreaEntry({ ownerFolderId: pageOwnerId(tab.usage), sourceType: 'checklist', sourceId: c.id, ...(amount ? { amount } : {}) })}
+                onAddToSaving={(c, amount) => pageHistory.add({ sourceType: 'checklist', sourceId: c.id, ...(amount ? { amount } : {}) })}
+                onHistory={pageHistory.logStruct}
                 onCreate={(c) => cardActions.createChecklist({ ...c, folderId: null, frequency: tab.usage })} />
             </section>
           )}
@@ -224,7 +232,10 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpe
                       <FolderCard state={state} folder={f} depth={0} ownerId={pageOwnerId(tab.usage)}
                         actions={cardActions} onOpenSavingArea={onOpenSavingArea}
                         onMenuDelete={() => {
-                          if (window.confirm(`Delete "${f.name}"? It moves to Hidden, where you can restore it.`)) cardActions.hideFolder(f.id)
+                          if (window.confirm(`Delete "${f.name}"? It moves to Hidden, where you can restore it.`)) {
+                            cardActions.hideFolder(f.id)
+                            pageHistory.logStruct({ t: 'delF', folderId: f.id })
+                          }
                         }}
                         onCopyEdit={() => {
                           const copyId = makeId()
@@ -236,7 +247,7 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpe
                       <div key={copy.id} className="screen-lock__top">
                       <FolderCard state={state} folder={copy} depth={0} ownerId={pageOwnerId(tab.usage)}
                         actions={cardActions} onOpenSavingArea={onOpenSavingArea}
-                        editingCopy onDone={() => setEditing(null)}
+                        editingCopy onDone={() => { cardActions.mergeIdenticalCopy(pageOwnerId(tab.usage), copy.id); setEditing(null) }}
                         onBack={() => {
                           // discard the copy: removing its only Saving Area entry also deletes the copy
                           const entry = state.savingAreaEntries.find((e) => e.sourceType === 'folder' && e.sourceId === copy.id)
@@ -258,18 +269,15 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpe
         return savingOpen ? (
           <div className="screen-lock__top">
             <SavingFolderView state={state} ownerId={owner} title={heading ?? tab.label}
-              onClose={() => setSavingOpen(false)}
-              onAdd={(entry) => cardActions.addSavingAreaEntry({ ownerFolderId: owner, ...entry })}
-              onRemove={(id) => cardActions.removeSavingAreaEntry(id)}
-              onRestore={(entry) => cardActions.restoreSavingAreaEntry(entry)}
-              onUpdateDefault={(id, amount) => cardActions.updateDefault(id, amount)}
-              onUpdateEntries={(ids, amount) => cardActions.updateEntryAmount(ids, amount)} />
+              onClose={() => setSavingOpen(false)} history={pageHistory} actions={cardActions}
+              onUpdateDefault={pageHistory.updateDefault}
+              onUpdateEntries={pageHistory.updateEntries} />
           </div>
         ) : (
           <SavingArea
             title={`📁 ${heading ?? tab.label}`}
             hint="Tap to open"
-            hideAdd
+            hideAdd history={pageHistory}
             entries={state.savingAreaEntries.filter((e) => e.ownerFolderId === owner)}
             choices={{ checklists: [], folders: [] }}
             onOpen={() => setSavingOpen(true)}
@@ -280,7 +288,12 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpe
 
       {adding && (
         <AddFolderDialog tab={tab} onCancel={() => setAdding(false)}
-          onConfirm={(p) => { setAdding(false); onAddFolder(p) }} />
+          onConfirm={(p) => {
+            setAdding(false)
+            const id = makeId()
+            onAddFolder({ ...p, id })
+            pageHistory.logStruct({ t: 'addF', folderId: id })
+          }} />
       )}
     </main>
   )

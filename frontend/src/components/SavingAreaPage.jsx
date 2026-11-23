@@ -17,7 +17,7 @@
 import { useState } from 'react'
 import { formatINR } from '../utils/format.js'
 import { groupSavingAreaEntries } from '../domain/folderChecklist.js'
-import { calculateFolderTotals } from '../domain/analytics.js'
+import { calculateFolderView, calculateOwnerValue } from '../domain/analytics.js'
 import './savingAreaPage.css'
 
 function Icon({ d, size = 20 }) {
@@ -35,7 +35,7 @@ const TRASH = 'M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 
 
 const Wrap = ({ className, children }) => (className.includes('embedded') ? <div className={className}>{children}</div> : <main className={className}>{children}</main>)
 
-function SavingAreaPage({ state, ownerId, title, onBack, onRemoveEntry, onUpdateDefault, embedded = false }) {
+function SavingAreaPage({ state, ownerId, title, onBack, onRemoveEntry, onUpdateEntries, embedded = false }) {
   const [editingKey, setEditingKey] = useState(null)
   const [draft, setDraft] = useState('')
 
@@ -47,18 +47,16 @@ function SavingAreaPage({ state, ownerId, title, onBack, onRemoveEntry, onUpdate
     .filter((g) => g.sourceType === 'folder')
     .map((g) => ({ ...g, folder: state.folders.find((f) => f.id === g.sourceId) ?? null }))
 
-  const totals = { expense: 0, income: 0, saving: 0 }
-  for (const g of checklistGroups) {
-    if (g.template) totals[g.template.transactionType] += (g.amount ?? g.template.defaultAmount) * g.count
-  }
+  const totals = calculateOwnerValue(state, ownerId) // checklist entries + whole-folder entries
 
   const removeOne = (group) => onRemoveEntry(group.entries[group.entries.length - 1].id)
 
-  function startEdit(g) { setEditingKey(g.key); setDraft(String(g.template.defaultAmount)) }
-  function save(g) {
+  const amountOf = (g) => g.amount ?? g.template?.defaultAmount ?? 0
+  function startEdit(g) { setEditingKey(g.key); setDraft(String(amountOf(g))) }
+  function save(g) { // changes only these Saving Area records, never the checklist in the container
     const value = Number(draft)
-    if (Number.isFinite(value) && value > 0 && value !== g.template.defaultAmount) {
-      onUpdateDefault(g.template.id, value)
+    if (Number.isFinite(value) && value > 0 && value !== amountOf(g)) {
+      onUpdateEntries(g.entries.map((e) => e.id), value)
     }
     setEditingKey(null)
   }
@@ -91,17 +89,13 @@ function SavingAreaPage({ state, ownerId, title, onBack, onRemoveEntry, onUpdate
                 <li key={g.key} className="sa-item">
                   <div className="sa-row">
                     <span className="sa-name">{g.titleSnapshot}</span>
-                    {g.count > 1 && g.template && editingKey !== g.key && (
+                    {g.count > 1 && editingKey !== g.key && (
                       <span className="sa-records">
                         <span>{g.count} records</span><span>·</span>
-                        <strong>{formatINR((g.amount ?? g.template.defaultAmount) * g.count)}</strong>
+                        <strong>{formatINR(amountOf(g) * g.count)}</strong>
                       </span>
                     )}
-                    {g.count > 1 && !g.template && <span className="sa-records">{g.count} records</span>}
-                    {g.template && g.amount !== undefined && (
-                      <span className="sa-amount">{formatINR(g.amount)}</span>
-                    )}
-                    {g.template && g.amount === undefined && (editingKey === g.key ? (
+                    {(editingKey === g.key ? (
                       <span className="sa-edit">
                         <span>₹</span>
                         <input type="number" inputMode="decimal" min="1" autoFocus value={draft}
@@ -115,7 +109,7 @@ function SavingAreaPage({ state, ownerId, title, onBack, onRemoveEntry, onUpdate
                       </span>
                     ) : (
                       <span className="sa-amount">
-                        {formatINR(g.template.defaultAmount)}
+                        {formatINR(amountOf(g))}
                         <button type="button" className="sa-icon-btn small" aria-label={`Edit ${g.titleSnapshot} amount`}
                           onClick={() => startEdit(g)}>
                           <Icon d={PENCIL} size={11} />
@@ -142,7 +136,7 @@ function SavingAreaPage({ state, ownerId, title, onBack, onRemoveEntry, onUpdate
               {folderGroups.map((g) => {
                 const lists = g.folder ? state.checklists.filter((c) => c.folderId === g.folder.id).length : 0
                 const kids = g.folder ? state.folders.filter((f) => f.parentFolderId === g.folder.id).length : 0
-                const t = g.folder ? calculateFolderTotals(state, g.folder.id) : null
+                const t = g.folder ? calculateFolderView(state, g.folder.id) : null
                 return (
                   <li key={g.key} className="sa-item">
                     <div className="sa-row">

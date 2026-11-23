@@ -3,11 +3,13 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   createFolder, updateFolder, setFolderHidden, duplicateFolderStructure,
-  createChecklistTemplate, updateChecklistTemplate, deleteChecklistTemplate,
+  createChecklistTemplate, updateChecklistTemplate, deleteChecklistTemplate, updateSavingAreaEntryAmount,
   addSavingAreaEntry, settleSavingAreaEntries, selectFolderTree,
   selectHiddenFolders, groupSavingAreaEntries, periodKeyFor,
-  copyFolderToSavingArea, removeSavingAreaEntry,
+  copyFolderToSavingArea, removeSavingAreaEntry, restoreSavingAreaEntry, collectEntryTree, hashFolder, mergeIdenticalCopy,
 } from './folderChecklist.js'
+import { calculateOwnerValue, calculateFolderView, checklistRecordCount } from './analytics.js'
+import { createTransaction } from './records.js'
 
 const base = () => ({
   schemaVersion: 1,
@@ -159,8 +161,10 @@ test('addSavingAreaEntry: separate rows, source untouched, no transactions', () 
   assert.equal(new Set(s2.savingAreaEntries.map((e) => e.id)).size, 3)
   assert.equal(s2.savingAreaEntries[0].titleSnapshot, 'Tea')
   assert.equal(s2.savingAreaEntries[2].titleSnapshot, 'Inner')
-  assert.equal(s2.checklists, s.checklists)
-  assert.equal(s2.folders, s.folders)
+  assert.deepEqual(s2.checklists, s.checklists)
+  assert.equal(s2.folders.length, s.folders.length + 1) // a folder entry is its own fresh copy...
+  assert.equal(s2.folders.find((f) => f.id === inner.id), s.folders.find((f) => f.id === inner.id)) // ...the original is untouched
+  assert.notEqual(s2.savingAreaEntries[2].sourceId, inner.id)
   assert.equal(s2.transactions, s.transactions)
   const groups = groupSavingAreaEntries(s2.savingAreaEntries)
   assert.deepEqual(groups.map((g) => g.count), [2, 1])
@@ -308,7 +312,189 @@ test('addSavingAreaEntry: checklist entry can carry its own amount; separate row
   assert.equal(t.checklists.length, s.checklists.length)
   assert.equal(t.transactions.length, s.transactions.length)
   assert.equal(t.checklists.find((c) => c.id === tea.id).defaultAmount, 15)
-  assert.equal(t.savingAreaEntries[0].amount, undefined)
+  assert.equal(t.savingAreaEntries[0].amount, 15) // the entry keeps its own copy of the amount
   const groups = groupSavingAreaEntries(t.savingAreaEntries)
-  assert.deepEqual(groups.map((g) => [g.amount, g.count]), [[undefined, 1], [40, 2]])
+  assert.deepEqual(groups.map((g) => [g.amount, g.count]), [[15, 1], [40, 2]])
+})
+
+test('calculateOwnerValue: a folder is the sum of its entries; folder entries bring that folder value', () => {
+  const { s, daily, inner, tea } = seeded()
+  let t = createChecklistTemplate(s, { folderId: inner.id, title: 'Bus', defaultAmount: 50, transactionType: 'income' })
+  const bus = lastList(t)
+  t = addSavingAreaEntry(t, { ownerFolderId: daily.id, sourceType: 'checklist', sourceId: tea.id })
+  t = addSavingAreaEntry(t, { ownerFolderId: daily.id, sourceType: 'checklist', sourceId: tea.id, amount: 40 })
+  t = addSavingAreaEntry(t, { ownerFolderId: inner.id, sourceType: 'checklist', sourceId: bus.id })
+  t = addSavingAreaEntry(t, { ownerFolderId: daily.id, sourceType: 'folder', sourceId: inner.id })
+  const v = calculateOwnerValue(t, daily.id)
+  assert.equal(v.expense, 15 + 40)
+  assert.equal(v.income, 50)       // + the inner folder's value (once)
+  // page level: adding the folder to a page's Saving Area carries its whole value
+  const page = addSavingAreaEntry(t, { ownerFolderId: 'page:daily', sourceType: 'folder', sourceId: daily.id })
+  assert.deepEqual(calculateOwnerValue(page, 'page:daily'), { income: 50, expense: 55, saving: 0 })
+  // folder view = recorded transactions + entries + inner folders
+  assert.equal(calculateFolderView(page, daily.id).expense, 55)
+})
+
+test('copyFolderToSavingArea: the copy starts with the original entries (re-pointed at the copy)', () => {
+  const { s, daily, tea } = seeded()
+  let t = addSavingAreaEntry(s, { ownerFolderId: daily.id, sourceType: 'checklist', sourceId: tea.id, amount: 30 })
+  t = copyFolderToSavingArea(t, { folderId: daily.id, ownerFolderId: 'page:daily', id: 'cp' })
+  assert.equal(calculateOwnerValue(t, 'cp').expense, 30) // copy: entries only, transactions are never copied
+  const copiedTea = t.checklists.find((c) => c.folderId === 'cp')
+  assert.ok(t.savingAreaEntries.some((e) => e.ownerFolderId === 'cp' && e.sourceId === copiedTea.id))
+  assert.equal(calculateOwnerValue(t, daily.id).expense, 30) // original unchanged
+})
+
+test('folder value = its Saving Area only: one record of 7000 is 7000, never doubled', () => {
+  const { s, daily, inner } = seeded()
+  let t = createChecklistTemplate(s, { folderId: inner.id, title: 'Lunch', defaultAmount: 3500, transactionType: 'expense' })
+  const lunch = lastList(t)
+  t = addSavingAreaEntry(t, { ownerFolderId: inner.id, sourceType: 'checklist', sourceId: lunch.id })
+  t = addSavingAreaEntry(t, { ownerFolderId: inner.id, sourceType: 'checklist', sourceId: lunch.id })
+  assert.equal(calculateFolderView(t, inner.id).expense, 7000)
+  // the inner folder is not in the parent's Saving Area yet -> the parent shows nothing for it
+  assert.equal(calculateFolderView(t, daily.id).expense, 0)
+  // ONE record (a "+ Edit" copy) in the parent's Saving Area -> parent = that one record, 7000
+  const own = { ...t, savingAreaEntries: t.savingAreaEntries.filter((e) => e.ownerFolderId === inner.id), transactions: [] }
+  const u = copyFolderToSavingArea(own, { folderId: inner.id, ownerFolderId: daily.id, id: 'cp2' })
+  assert.equal(calculateFolderView(u, daily.id).expense, 7000)
+  assert.equal(calculateFolderView(u, inner.id).expense, 7000) // original not added again
+  // any later change shows in the card and the parent at once
+  const v = addSavingAreaEntry(u, { ownerFolderId: 'cp2', sourceType: 'checklist', sourceId: u.checklists.find((c) => c.folderId === 'cp2').id })
+  assert.equal(calculateFolderView(v, daily.id).expense, 10500)
+  assert.equal(checklistRecordCount(u, lunch), 2)
+})
+
+test('page / folder totals pull ONLY from the Saving Area container, never from the Checklist or Folder containers', () => {
+  let t = createFolder(base(), { sectionId: 'expense', parentFolderId: null, name: 'lunch folder', usage: 'daily' })
+  const lunch = lastFolder(t)
+  t = createChecklistTemplate(t, { folderId: null, title: 'morning snakes', defaultAmount: 20, frequency: 'daily' })
+  const snakes = lastList(t)
+  t = createChecklistTemplate(t, { folderId: null, title: 'bus fare', defaultAmount: 50, frequency: 'daily' })
+  t = createChecklistTemplate(t, { folderId: lunch.id, title: 'meal', defaultAmount: 159 })
+  const meal = lastList(t)
+  // everything above sits in the Checklist / Folder containers: nothing counts yet
+  assert.deepEqual(calculateOwnerValue(t, 'page:daily'), { income: 0, expense: 0, saving: 0 })
+  assert.deepEqual(calculateFolderView(t, lunch.id), { income: 0, expense: 0, saving: 0 })
+  // put items in the Saving Area container: only those count
+  t = addSavingAreaEntry(t, { ownerFolderId: lunch.id, sourceType: 'checklist', sourceId: meal.id })
+  t = addSavingAreaEntry(t, { ownerFolderId: 'page:daily', sourceType: 'checklist', sourceId: snakes.id, amount: 56 })
+  t = addSavingAreaEntry(t, { ownerFolderId: 'page:daily', sourceType: 'folder', sourceId: lunch.id })
+  assert.deepEqual(calculateOwnerValue(t, 'page:daily'), { income: 0, expense: 56 + 159, saving: 0 })
+  assert.equal(calculateFolderView(t, lunch.id).expense, 159) // bus fare (never added) is nowhere
+})
+
+test('Saving Area items are independent snapshots: editing / deleting the originals never changes them', () => {
+  let t = createFolder(base(), { sectionId: 'expense', parentFolderId: null, name: 'lunch folder', usage: 'daily' })
+  const lunch = lastFolder(t)
+  t = createChecklistTemplate(t, { folderId: lunch.id, title: 'meal', defaultAmount: 100 })
+  const meal = lastList(t)
+  t = addSavingAreaEntry(t, { ownerFolderId: lunch.id, sourceType: 'checklist', sourceId: meal.id })
+  t = addSavingAreaEntry(t, { ownerFolderId: 'page:daily', sourceType: 'folder', sourceId: lunch.id })
+  assert.equal(calculateOwnerValue(t, 'page:daily').expense, 100)
+
+  // edit the checklist in the Checklist container, and the folder's own contents
+  t = updateChecklistTemplate(t, meal.id, { defaultAmount: 999 })
+  t = createChecklistTemplate(t, { folderId: lunch.id, title: 'extra', defaultAmount: 5 })
+  t = addSavingAreaEntry(t, { ownerFolderId: lunch.id, sourceType: 'checklist', sourceId: lastList(t).id })
+  assert.equal(calculateFolderView(t, lunch.id).expense, 100 + 5)   // the original folder follows its own edits
+  assert.equal(calculateOwnerValue(t, 'page:daily').expense, 100)  // the copy already in the Saving Area does not
+  assert.equal(t.savingAreaEntries.find((e) => e.sourceId === meal.id).amount, 100)
+
+  // delete the checklist template: the Saving Area records stay
+  t = deleteChecklistTemplate(t, meal.id)
+  assert.equal(calculateFolderView(t, lunch.id).expense, 100 + 5) // the folder's own Saving Area keeps its records too
+  assert.equal(calculateOwnerValue(t, 'page:daily').expense, 100)
+
+  // adding again creates a NEW editable folder, even with the same name
+  const before = t.folders.length
+  t = addSavingAreaEntry(t, { ownerFolderId: 'page:daily', sourceType: 'folder', sourceId: lunch.id })
+  assert.equal(t.folders.length, before + 1)
+  const copies = t.savingAreaEntries.filter((e) => e.ownerFolderId === 'page:daily').map((e) => e.sourceId)
+  assert.equal(new Set(copies).size, 2)
+  assert.equal(calculateOwnerValue(t, 'page:daily').expense, 100 + 105)
+  // editing one copy leaves the other copy and the original alone
+  const [c1] = copies
+  const c1Entry = t.savingAreaEntries.find((e) => e.ownerFolderId === c1)
+  t = updateSavingAreaEntryAmount(t, [c1Entry.id], 7)
+  assert.equal(calculateFolderView(t, c1).expense, 7)
+  assert.equal(calculateOwnerValue(t, 'page:daily').expense, 7 + 105)
+  assert.equal(calculateFolderView(t, lunch.id).expense, 105)
+})
+
+test('removing a Saving Area folder record and undoing it brings the whole copy back', () => {
+  const { s, daily, inner } = seeded()
+  let t = createChecklistTemplate(s, { folderId: inner.id, title: 'Bus', defaultAmount: 50, transactionType: 'income' })
+  t = addSavingAreaEntry(t, { ownerFolderId: inner.id, sourceType: 'checklist', sourceId: lastList(t).id })
+  t = addSavingAreaEntry(t, { ownerFolderId: 'page:daily', sourceType: 'folder', sourceId: inner.id })
+  const entry = t.savingAreaEntries.find((e) => e.ownerFolderId === 'page:daily')
+  const tree = collectEntryTree(t, entry)
+  const removed = removeSavingAreaEntry(t, entry.id)
+  assert.equal(removed.folders.length, t.folders.length - 1)
+  assert.equal(calculateOwnerValue(removed, 'page:daily').income, 0)
+  const back = restoreSavingAreaEntry(removed, entry, tree)
+  assert.equal(calculateOwnerValue(back, 'page:daily').income, 50)
+  assert.equal(back.folders.length, t.folders.length)
+})
+
+test('fingerprints: same content = same item again, any edit = a different item', () => {
+  let t = createFolder(base(), { sectionId: 'expense', parentFolderId: null, name: 'lunch folder', usage: 'daily' })
+  const lunch = lastFolder(t)
+  t = createChecklistTemplate(t, { folderId: lunch.id, title: 'meal', defaultAmount: 100 })
+  const meal = lastList(t)
+  t = addSavingAreaEntry(t, { ownerFolderId: lunch.id, sourceType: 'checklist', sourceId: meal.id })
+  const h0 = hashFolder(t, lunch.id)
+  assert.equal(hashFolder(t, lunch.id), h0)                       // stable
+  // "+ Add item" three times with nothing changed -> ONE copy, three records
+  for (let i = 0; i < 3; i += 1) t = addSavingAreaEntry(t, { ownerFolderId: 'page:daily', sourceType: 'folder', sourceId: lunch.id })
+  const page = () => t.savingAreaEntries.filter((e) => e.ownerFolderId === 'page:daily')
+  assert.equal(new Set(page().map((e) => e.sourceId)).size, 1)
+  assert.equal(page().length, 3)
+  assert.equal(t.folders.filter((f) => f.savingCopy).length, 1)
+  assert.equal(calculateOwnerValue(t, 'page:daily').expense, 300)
+  // edit the folder (the Folder container) -> nothing in the Saving Area moves
+  t = createChecklistTemplate(t, { folderId: lunch.id, title: 'tea', defaultAmount: 10 })
+  t = addSavingAreaEntry(t, { ownerFolderId: lunch.id, sourceType: 'checklist', sourceId: lastList(t).id })
+  assert.notEqual(hashFolder(t, lunch.id), h0)                    // different fingerprint now
+  assert.equal(calculateOwnerValue(t, 'page:daily').expense, 300)
+  // add it again -> a different fingerprint is a different folder
+  t = addSavingAreaEntry(t, { ownerFolderId: 'page:daily', sourceType: 'folder', sourceId: lunch.id })
+  assert.equal(new Set(page().map((e) => e.sourceId)).size, 2)
+  assert.equal(calculateOwnerValue(t, 'page:daily').expense, 300 + 110)
+  // put the folder back as it was (remove the edit) is not needed: same content added again = same item
+  t = addSavingAreaEntry(t, { ownerFolderId: 'page:daily', sourceType: 'folder', sourceId: lunch.id })
+  assert.equal(new Set(page().map((e) => e.sourceId)).size, 2)
+  assert.equal(page().length, 5)
+})
+
+test('fingerprints: checklist records group by content, not by which template they came from', () => {
+  let t = createFolder(base(), { sectionId: 'expense', parentFolderId: null, name: 'F', usage: 'daily' })
+  t = createChecklistTemplate(t, { folderId: null, title: 'bus fare', defaultAmount: 50, frequency: 'daily' })
+  const bus = lastList(t)
+  t = addSavingAreaEntry(t, { ownerFolderId: 'page:daily', sourceType: 'checklist', sourceId: bus.id })
+  t = addSavingAreaEntry(t, { ownerFolderId: 'page:daily', sourceType: 'checklist', sourceId: bus.id })
+  t = updateChecklistTemplate(t, bus.id, { defaultAmount: 60 })               // edit in the Checklist container
+  t = addSavingAreaEntry(t, { ownerFolderId: 'page:daily', sourceType: 'checklist', sourceId: bus.id })
+  const groups = groupSavingAreaEntries(t.savingAreaEntries)
+  assert.deepEqual(groups.map((g) => [g.amount, g.count]), [[50, 2], [60, 1]])
+  // "+" on the old row repeats that exact record (50), whatever the template says now
+  t = addSavingAreaEntry(t, { ownerFolderId: 'page:daily', sourceType: 'checklist', sourceId: bus.id, cloneOf: t.savingAreaEntries[0].id })
+  assert.deepEqual(groupSavingAreaEntries(t.savingAreaEntries).map((g) => [g.amount, g.count]), [[50, 3], [60, 1]])
+  // editing the amount of a row changes its fingerprint, and rows with equal fingerprints merge
+  t = updateSavingAreaEntryAmount(t, t.savingAreaEntries.filter((e) => e.amount === 60).map((e) => e.id), 50)
+  assert.deepEqual(groupSavingAreaEntries(t.savingAreaEntries).map((g) => [g.amount, g.count]), [[50, 4]])
+})
+
+test('fingerprints: finishing a "+ Edit" with no change merges into the identical folder already there', () => {
+  let t = createFolder(base(), { sectionId: 'expense', parentFolderId: null, name: 'lunch folder', usage: 'daily' })
+  const lunch = lastFolder(t)
+  t = createChecklistTemplate(t, { folderId: lunch.id, title: 'meal', defaultAmount: 100 })
+  t = addSavingAreaEntry(t, { ownerFolderId: lunch.id, sourceType: 'checklist', sourceId: lastList(t).id })
+  t = addSavingAreaEntry(t, { ownerFolderId: 'page:daily', sourceType: 'folder', sourceId: lunch.id })
+  t = copyFolderToSavingArea(t, { folderId: lunch.id, ownerFolderId: 'page:daily', id: 'cp-x' })
+  assert.equal(t.folders.filter((f) => f.savingCopy).length, 2)
+  t = mergeIdenticalCopy(t, 'page:daily', 'cp-x')
+  assert.equal(t.folders.filter((f) => f.savingCopy).length, 1)
+  assert.equal(t.savingAreaEntries.filter((e) => e.ownerFolderId === 'page:daily').length, 2)
+  assert.equal(calculateOwnerValue(t, 'page:daily').expense, 200)
 })

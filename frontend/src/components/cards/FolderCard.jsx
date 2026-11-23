@@ -32,7 +32,9 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { formatINR } from '../../utils/format.js'
-import { calculateFolderTotals } from '../../domain/analytics.js'
+import { calculateFolderView, folderRecordCount, folderItemEntries } from '../../domain/analytics.js'
+import { useHist, setHist, revertStruct, reapplyStruct } from './historyStore.js'
+import { useEntryHistory } from './entryHistory.js'
 import { makeId } from '../../domain/folderChecklist.js'
 import AdvancedSettings, { parseRecordCount } from './AdvancedSettings.jsx'
 import ChecklistSection from './ChecklistSection.jsx'
@@ -49,41 +51,49 @@ function nextName(base, names) {
   return `${base} ${n}`
 }
 
-function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], onOpenSavingArea, onTwin, onRemove, initiallyOpen = false, onCopyEdit, editingCopy = false, onDone, onBack, onMenuDelete, tapView: tapViewProp, pageMode = false }) {
+function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], onOpenSavingArea, onTwin, onRemove, initiallyOpen = false, onCopyEdit, editingCopy = false, onDone, onBack, onMenuDelete, tapView: tapViewProp, pageMode = false, onSheetDone }) {
+  const [sheetOpen, setSheetOpen] = useState(false) // inner folder tapped in an edit view -> floating card
   const [pageOpen, setPageOpen] = useState(false) // tapped card -> this folder as its own full page
-  const tapView = tapViewProp ?? Boolean(onCopyEdit) // period-page folders: tapping the card = use view
+  const tapView = tapViewProp ?? Boolean(onCopyEdit || editingCopy) // period-page folders: tapping the card = use view
   const [menu, setMenu] = useState(false)
   const [open, setOpen] = useState(Boolean(initiallyOpen || editingCopy || pageMode))
   // Tapping the card (not +Edit) opens a USE view: checklists / folders to record from, no
   // "+ Add checklist" / "+ Add folder". +Edit (and twins / copies) open the full edit view.
   const [editMode, setEditMode] = useState(Boolean((initiallyOpen || editingCopy) && !pageMode))
   useEffect(() => {
-    if (!pageOpen) return undefined
-    const onKey = (e) => { if (e.key === 'Escape') setPageOpen(false) }
+    if (!pageOpen && !sheetOpen) return undefined
+    const onKey = (e) => { if (e.key === 'Escape') { setPageOpen(false); setSheetOpen(false) } }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [pageOpen])
+  }, [pageOpen, sheetOpen])
   const [adding, setAdding] = useState(null) // 'f' | null (the checklist form lives in ChecklistSection)
   const [name, setName] = useState('')
   const [advOpen, setAdvOpen] = useState(false)
   const [rc, setRc] = useState('1')
   const [rcBad, setRcBad] = useState(false)
   const [flash, setFlash] = useState(false)
-  const [undoStack, setUndoStack] = useState([]) // actions, newest last
-  const [redoStack, setRedoStack] = useState([])
+  // ← → of this card: only what happens INSIDE this folder (checklists / folders created or
+  // deleted in it). Kept per folder, so it also sees changes made on the folder's own page.
+  // On the day / folder pages (tapView) "+ Add item" belongs to the PAGE's history, not here.
+  const histKey = `struct:${folder.id}`
+  const hist = useHist(histKey)
+  const undoStack = hist.undo
+  const redoStack = hist.redo
+  const setUndoStack = (fn) => setHist(histKey, (h) => ({ ...h, undo: typeof fn === 'function' ? fn(h.undo) : fn }))
+  const setRedoStack = (fn) => setHist(histKey, (h) => ({ ...h, redo: typeof fn === 'function' ? fn(h.redo) : fn }))
+  const pageHistory = useEntryHistory(ownerId, actions, state) // the PAGE this card sits on
+  const folderHistory = useEntryHistory(folder.id, actions, state) // this folder's own page
   const [fresh, setFresh] = useState(() => new Set()) // twin folders: open on arrival
 
   const path = [...trail, folder.name]
   const lists = state.checklists.filter((c) => c.folderId === folder.id)
   const kids = state.folders.filter((f) => f.parentFolderId === folder.id && !f.hidden)
-  const totals = calculateFolderTotals(state, folder.id)
+  const totals = calculateFolderView(state, folder.id)
   const own = state.savingAreaEntries.filter((e) => e.ownerFolderId === folder.id)
   // Records of this folder = 1 + "+ Add item" taps (entries of this folder in its parent's Saving Area)
-  const itemEntries = state.savingAreaEntries.filter(
-    (e) => e.ownerFolderId === ownerId && e.sourceType === 'folder' && e.sourceId === folder.id,
-  )
+  const itemEntries = folderItemEntries(state, folder, ownerId)
   // Records = starting count (Advanced settings, default 1) + "+ Add item" taps
-  const records = (folder.recordCount ?? 1) + itemEntries.length
+  const records = folderRecordCount(state, folder, ownerId)
   const lastEntry = itemEntries[itemEntries.length - 1]
   const count = folder.recordCount ?? 1
 
@@ -91,6 +101,7 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
 
   // ---------- history (← →) ----------
   function log(action) {
+    if (tapView) { folderHistory.logStruct(action); return } // arrows = this folder's page history
     setUndoStack((s) => [...s, action])
     setRedoStack([])
   }
@@ -103,39 +114,26 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
     const f = state.folders.find((x) => x.id === a.folderId)
     return `folder “${f ? f.name : ''}” ${a.t === 'addF' ? 'added' : 'deleted'}`
   }
-  const addEntry = () => actions.addSavingAreaEntry({ ownerFolderId: ownerId, sourceType: 'folder', sourceId: folder.id })
+  const addEntry = () => (tapView
+    ? pageHistory.add({ sourceType: 'folder', sourceId: folder.id })
+    : actions.addSavingAreaEntry({ ownerFolderId: ownerId, sourceType: 'folder', sourceId: folder.id }))
 
   // Reverses one action; returns the action to keep for Redo (with a snapshot when needed).
   function revert(a) {
     if (a.t === 'rec') { if (lastEntry) actions.removeSavingAreaEntry(lastEntry.id); return a }
-    if (a.t === 'addC') {
-      const index = state.checklists.findIndex((c) => c.id === a.id)
-      if (index === -1) return a
-      const row = state.checklists[index]
-      const txs = a.withRecords ? state.transactions.filter((t) => t.checklistId === a.id) : []
-      if (a.withRecords) actions.deleteChecklistWithRecords(a.id)
-      else actions.deleteChecklist(a.id)
-      return { ...a, snap: { row, index, txs } }
-    }
-    if (a.t === 'delC') { actions.restoreChecklist(a.snap); return a }
-    if (a.t === 'addF') { actions.hideFolder(a.folderId); return a }
-    actions.unhideFolder(a.folderId) // 'delF'
-    return a
+    return revertStruct(a, state, actions)
   }
   // Applies the action again (Redo).
   function reapply(a) {
     if (a.t === 'rec') addEntry()
-    else if (a.t === 'addC') { if (a.snap) actions.restoreChecklist(a.snap) }
-    else if (a.t === 'delC') actions.deleteChecklist(a.snap.row.id)
-    else if (a.t === 'addF') actions.unhideFolder(a.folderId)
-    else actions.hideFolder(a.folderId) // 'delF'
+    else reapplyStruct(a, actions)
   }
   function onUndo() {
     if (undoStack.length) {
       const back = revert(undoStack[undoStack.length - 1])
       setUndoStack((s) => s.slice(0, -1))
       setRedoStack((r) => [...r, back])
-    } else if (lastEntry) {
+    } else if (lastEntry && !tapView) {
       // after a reload the history is empty, but earlier "+ Add item" records still exist
       actions.removeSavingAreaEntry(lastEntry.id)
       setRedoStack((r) => [...r, { t: 'rec' }])
@@ -148,7 +146,7 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
     setRedoStack((r) => r.slice(0, -1))
     setUndoStack((s) => [...s, a])
   }
-  const canUndo = undoStack.length > 0 || Boolean(lastEntry)
+  const canUndo = undoStack.length > 0 || (Boolean(lastEntry) && !tapView)
   const lastUndo = undoStack[undoStack.length - 1]
   const nextRedo = redoStack[redoStack.length - 1]
 
@@ -201,7 +199,7 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
   }
   function onAddItem() {
     addEntry()
-    log({ t: 'rec' })
+    if (!tapView) log({ t: 'rec' })
     setFlash(true)
     setTimeout(() => setFlash(false), 800)
   }
@@ -237,7 +235,7 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
         )}
         <button type="button" className="fc__head" aria-label={`Open folder ${folder.name}`} onClick={() => {
           if (pageMode) return
-          if (tapView) { setPageOpen(true); return }
+          if (tapView) { if (depth > 0) setSheetOpen(true); else setPageOpen(true); return }
           if (!open) { setEditMode(true); setOpen(true) }
         }}>
           <span className="fc__tile"><Svg d={FOLDER_SVG} size={20} /></span>
@@ -249,6 +247,7 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
             </div>
           </span>
         </button>
+        {pageMode && onSheetDone && <button type="button" className="fc__edit fc__edit--on" onClick={onSheetDone}>✓ Done</button>}
         {!pageMode && <button type="button" className={`fc__edit${open ? ' fc__edit--on' : ''}`} aria-expanded={open}
           title={open ? (editingCopy ? 'Finish editing the copy' : 'Close folder') : (depth > 0 && onTwin) || (depth === 0 && onCopyEdit) ? 'Edit a copy of this folder in the Saving Area' : 'Open folder'}
           onClick={onEdit}>
@@ -323,15 +322,28 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
           <div className="fc__stat fc__stat--r"><span>Received</span><b>{formatINR(totals.income)}</b></div>
           <div className="fc__stat fc__stat--v"><span>Savings</span><b>{formatINR(totals.saving)}</b></div>
         </div>
-        <button type="button" className="fc__arrow" aria-label="Undo" disabled={!canUndo} onClick={onUndo}
-          title={lastUndo ? `Undo: ${titleOf(lastUndo)}` : lastEntry ? 'Undo: item added' : 'Nothing to undo'}>
+        <button type="button" className="fc__arrow" aria-label="Undo" disabled={tapView ? !folderHistory.canUndo : !canUndo}
+          onClick={tapView ? folderHistory.undo : onUndo}
+          title={tapView ? 'Undo (everything done on this folder\'s page)' : lastUndo ? `Undo: ${titleOf(lastUndo)}` : lastEntry ? 'Undo: item added' : 'Nothing to undo'}>
           <Svg d="M5 12h14M5 12l6 6M5 12l6-6" size={15} />
         </button>
-        <button type="button" className="fc__arrow" aria-label="Redo" disabled={!nextRedo} onClick={onRedo}
-          title={nextRedo ? `Redo: ${titleOf(nextRedo)}` : 'Nothing to redo'}>
+        <button type="button" className="fc__arrow" aria-label="Redo" disabled={tapView ? !folderHistory.canRedo : !nextRedo}
+          onClick={tapView ? folderHistory.redo : onRedo}
+          title={tapView ? 'Redo (everything done on this folder\'s page)' : nextRedo ? `Redo: ${titleOf(nextRedo)}` : 'Nothing to redo'}>
           <Svg d="M5 12h14M13 18l6-6M13 6l6 6" size={15} />
         </button>
       </div>
+
+      {sheetOpen && createPortal(
+        <div className="fsheet" role="dialog" aria-modal="true" aria-label={`Folder ${folder.name}`}>
+          <div className="fsheet__card">
+            <FolderCard state={state} folder={folder} depth={0} ownerId={ownerId} actions={actions}
+              trail={trail} onOpenSavingArea={onOpenSavingArea} tapView pageMode
+              onSheetDone={() => setSheetOpen(false)} />
+          </div>
+        </div>,
+        document.body,
+      )}
 
       {pageOpen && createPortal(
         <div className="fp" role="dialog" aria-modal="true" aria-label={`Folder ${folder.name}`}>

@@ -10,10 +10,12 @@
 //        onUpdateEntries(entryIds, amount)
 // ← → at the bottom undo / redo adding and removing entries made in this view.
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { formatINR } from '../../utils/format.js'
-import { groupSavingAreaEntries, makeId } from '../../domain/folderChecklist.js'
-import { calculateFolderTotals } from '../../domain/analytics.js'
+import { groupSavingAreaEntries } from '../../domain/folderChecklist.js'
+import { calculateFolderView, calculateOwnerValue } from '../../domain/analytics.js'
 import Svg from './Svg.jsx'
+import FolderCard from './FolderCard.jsx'
 import './cards.css'
 
 const FOLDER_SVG = 'M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2'
@@ -29,15 +31,15 @@ function ChecklistEntryRow({ g, template, onAdd, onRemoveOne, onUpdateDefault, o
   function done() {
     const n = Number(value)
     if (!(n > 0)) { setBad(true); return }
-    if (mode === 'default') { if (n !== template.defaultAmount) onUpdateDefault(template.id, n) }
-    else if (mode === 'entry') { if (n !== g.amount) onUpdateEntries(g.entries.map((e) => e.id), n) }
+    // editing here changes ONLY these Saving Area records, never the checklist in the container
+    if (mode === 'entry') { if (n !== g.amount) onUpdateEntries(g.entries.map((e) => e.id), n) }
     else onAdd(n)
     setMode(null)
   }
   if (mode) {
     return (
       <div className="cr">
-        <span className="cr__etitle">{mode === 'other' ? 'Amount ₹' : mode === 'default' ? 'Default ₹' : 'Amount ₹'}</span>
+        <span className="cr__etitle">Amount ₹</span>
         <input className="cr__input" type="number" min="1" inputMode="decimal" autoFocus value={value}
           aria-label="Amount in rupees" style={bad ? { borderColor: '#c0262d' } : undefined}
           onChange={(e) => { setValue(e.target.value); setBad(false) }}
@@ -53,18 +55,14 @@ function ChecklistEntryRow({ g, template, onAdd, onRemoveOne, onUpdateDefault, o
     <div className="cr">
       <div className="cr__count" role="status" aria-label={`Records: ${g.count}`}><b>{g.count}</b><span>Records</span></div>
       <span className="cr__name" title={g.titleSnapshot}>{g.titleSnapshot}</span>
-      {!template ? (
-        <span className="cr__def" style={{ cursor: 'default' }}>{formatINR(amount)}</span>
-      ) : (
-        <button type="button" className="cr__def" aria-label="Edit amount" onClick={() => open(g.amount !== undefined ? 'entry' : 'default')}>
-          {formatINR(amount)}<span className="cr__pencil"><Svg d={PENCIL_SVG} size={14} /></span>
-        </button>
-      )}
+      <button type="button" className="cr__def" aria-label="Edit amount" onClick={() => open('entry')}>
+        {formatINR(amount)}<span className="cr__pencil"><Svg d={PENCIL_SVG} size={14} /></span>
+      </button>
       {template && (
         <>
           <button type="button" className="cr__other" aria-label="Add with a different amount" onClick={() => open('other')}>Other</button>
           <button type="button" className="cr__rec" aria-label={`Add one more ${g.titleSnapshot}`}
-            onClick={() => onAdd(g.amount)}>+</button>
+            onClick={() => onAdd(g.amount, true)}>+</button>
         </>
       )}
       <button type="button" className="cr__del" aria-label="Remove one" title="Remove one" onClick={onRemoveOne}>
@@ -74,38 +72,17 @@ function ChecklistEntryRow({ g, template, onAdd, onRemoveOne, onUpdateDefault, o
   )
 }
 
-function SavingFolderView({ state, ownerId, title, onClose, onAdd: add, onRemove: remove, onRestore, onUpdateDefault, onUpdateEntries }) {
-  const [undo, setUndo] = useState([]) // { t:'add', id, input } | { t:'rem', entry }
-  const [redo, setRedo] = useState([])
-  const onAdd = (input) => {
-    const id = makeId()
-    add({ ...input, id })
-    setUndo((u) => [...u, { t: 'add', id, input }]); setRedo([])
-  }
+function SavingFolderView({ state, ownerId, title, onClose, history, onUpdateDefault, onUpdateEntries, actions }) {
+  const [sheetId, setSheetId] = useState(null) // folder row tapped -> floating folder card
+  const sheetFolder = sheetId ? state.folders.find((x) => x.id === sheetId) : null
+  const onAdd = (input) => history.add(input)
   const groups = groupSavingAreaEntries(state.savingAreaEntries.filter((e) => e.ownerFolderId === ownerId))
   const lists = groups.filter((g) => g.sourceType === 'checklist')
   const folders = groups.filter((g) => g.sourceType === 'folder')
-  const removeOne = (g) => {
-    const entry = g.entries[g.entries.length - 1]
-    remove(entry.id)
-    setUndo((u) => [...u, { t: 'rem', entry }]); setRedo([])
-  }
-  function doUndo() {
-    const a = undo[undo.length - 1]; if (!a) return
-    if (a.t === 'add') remove(a.id); else onRestore(a.entry)
-    setUndo(undo.slice(0, -1)); setRedo([...redo, a])
-  }
-  function doRedo() {
-    const a = redo[redo.length - 1]; if (!a) return
-    if (a.t === 'add') add({ ...a.input, id: a.id }); else remove(a.entry.id)
-    setRedo(redo.slice(0, -1)); setUndo([...undo, a])
-  }
+  const removeOne = (g) => history.remove(g.entries[g.entries.length - 1])
 
-  const totals = { expense: 0, income: 0, saving: 0 }
-  for (const g of lists) {
-    const t = state.checklists.find((c) => c.id === g.sourceId)
-    if (t) totals[t.transactionType] += (g.amount ?? t.defaultAmount) * g.count
-  }
+  const v = calculateOwnerValue(state, ownerId)
+  const totals = { expense: v.expense, income: v.income, saving: v.saving }
 
   return (
     <div className="fc fc--d0 fc--copy" aria-label={`Saving Area ${title}`}>
@@ -128,7 +105,9 @@ function SavingFolderView({ state, ownerId, title, onClose, onAdd: add, onRemove
             {lists.length === 0 && <div className="sv__empty">No checklists yet</div>}
             {lists.map((g) => (
               <ChecklistEntryRow key={g.key} g={g} template={state.checklists.find((c) => c.id === g.sourceId) ?? null}
-                onAdd={(amount) => onAdd({ sourceType: 'checklist', sourceId: g.sourceId, ...(amount ? { amount } : {}) })}
+                onAdd={(amount, repeat) => onAdd(repeat
+                  ? { sourceType: 'checklist', sourceId: g.sourceId, cloneOf: g.entries[g.entries.length - 1].id }
+                  : { sourceType: 'checklist', sourceId: g.sourceId, ...(amount ? { amount } : {}) })}
                 onRemoveOne={() => removeOne(g)} onUpdateDefault={onUpdateDefault} onUpdateEntries={onUpdateEntries} />
             ))}
           </div>
@@ -140,12 +119,14 @@ function SavingFolderView({ state, ownerId, title, onClose, onAdd: add, onRemove
             {folders.length === 0 && <div className="sv__empty">No folders yet</div>}
             {folders.map((g) => {
               const f = state.folders.find((x) => x.id === g.sourceId)
-              const t = f ? calculateFolderTotals(state, f.id) : { expense: 0, income: 0, saving: 0 }
+              const t = f ? calculateFolderView(state, f.id) : { expense: 0, income: 0, saving: 0 }
               const nL = f ? state.checklists.filter((c) => c.folderId === f.id).length : 0
               const nF = f ? state.folders.filter((x) => x.parentFolderId === f.id && !x.hidden).length : 0
               return (
                 <div key={g.key} className="fc fc--d1 fc--inner">
-                  <div className="fc__row">
+                  <div className="fc__row fc__row--tap" role="button" tabIndex={0} aria-label={`Open ${g.titleSnapshot}`}
+                    onClick={(e) => { if (f && !e.target.closest('button')) setSheetId(f.id) }}
+                    onKeyDown={(e) => { if (f && e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setSheetId(f.id) } }}>
                     <div className="fc__count" role="status" aria-label={`Records: ${g.count}`}><b>{g.count}</b><span>Records</span></div>
                     <span className="fc__tile"><Svg d={FOLDER_SVG} size={20} /></span>
                     <span className="fc__who">
@@ -178,13 +159,23 @@ function SavingFolderView({ state, ownerId, title, onClose, onAdd: add, onRemove
           <div className="fc__stat fc__stat--r"><span>Received</span><b>{formatINR(totals.income)}</b></div>
           <div className="fc__stat fc__stat--v"><span>Savings</span><b>{formatINR(totals.saving)}</b></div>
         </div>
-        <button type="button" className="fc__arrow" aria-label="Undo" disabled={!undo.length} onClick={doUndo} title="Undo">
+        <button type="button" className="fc__arrow" aria-label="Undo" disabled={!history.canUndo} onClick={history.undo} title="Undo (this page only)">
           <Svg d="M5 12h14M5 12l6 6M5 12l6-6" size={15} />
         </button>
-        <button type="button" className="fc__arrow" aria-label="Redo" disabled={!redo.length} onClick={doRedo} title="Redo">
+        <button type="button" className="fc__arrow" aria-label="Redo" disabled={!history.canRedo} onClick={history.redo} title="Redo (this page only)">
           <Svg d="M5 12h14M13 18l6-6M13 6l6 6" size={15} />
         </button>
       </div>
+
+      {sheetFolder && actions && createPortal(
+        <div className="fsheet" role="dialog" aria-modal="true" aria-label={`Folder ${sheetFolder.name}`}>
+          <div className="fsheet__card">
+            <FolderCard state={state} folder={sheetFolder} depth={0} ownerId={ownerId} actions={actions}
+              tapView pageMode onSheetDone={() => setSheetId(null)} />
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }

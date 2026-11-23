@@ -5,7 +5,8 @@
 // Saving Area, folder "+ Add item" adds to it, "+ Edit" edits a copy kept in it, ⋮ deletes.
 import { useState } from 'react'
 import { formatINR } from '../../utils/format.js'
-import { calculateFolderTotals } from '../../domain/analytics.js'
+import { calculateFolderView } from '../../domain/analytics.js'
+import { useEntryHistory } from './entryHistory.js'
 import { makeId } from '../../domain/folderChecklist.js'
 import { AddFolderDialog } from '../period/PeriodPage.jsx'
 import SavingArea from '../SavingArea.jsx'
@@ -18,7 +19,8 @@ function FolderPage({ state, folder, actions, onBack, onOpenSavingArea }) {
   const [savingOpen, setSavingOpen] = useState(false)
   const [editing, setEditing] = useState(null) // { copyId, sourceId }
 
-  const totals = calculateFolderTotals(state, folder.id)
+  const pageHistory = useEntryHistory(folder.id, actions, state)
+  const totals = calculateFolderView(state, folder.id)
   const lists = state.checklists.filter((c) => c.folderId === folder.id)
   const kids = state.folders.filter((f) => f.parentFolderId === folder.id && !f.hidden && !f.savingCopy)
 
@@ -36,7 +38,8 @@ function FolderPage({ state, folder, actions, onBack, onOpenSavingArea }) {
 
       <section className="period__card">
         <ChecklistSection lists={lists} state={state} actions={actions} variant="page"
-          onAddToSaving={(c, amount) => actions.addSavingAreaEntry({ ownerFolderId: folder.id, sourceType: 'checklist', sourceId: c.id, ...(amount ? { amount } : {}) })}
+          onAddToSaving={(c, amount) => pageHistory.add({ sourceType: 'checklist', sourceId: c.id, ...(amount ? { amount } : {}) })}
+          onHistory={pageHistory.logStruct}
           onCreate={(p) => actions.createChecklist({ folderId: folder.id, sectionId: folder.sectionId, ...p })} />
       </section>
 
@@ -56,7 +59,10 @@ function FolderPage({ state, folder, actions, onBack, onOpenSavingArea }) {
                   <FolderCard state={state} folder={k} depth={0} ownerId={folder.id} trail={[folder.name]}
                     actions={actions} onOpenSavingArea={onOpenSavingArea}
                     onMenuDelete={() => {
-                      if (window.confirm(`Delete "${k.name}"? It moves to Hidden, where you can restore it.`)) actions.hideFolder(k.id)
+                      if (window.confirm(`Delete "${k.name}"? It moves to Hidden, where you can restore it.`)) {
+                        actions.hideFolder(k.id)
+                        pageHistory.logStruct({ t: 'delF', folderId: k.id })
+                      }
                     }}
                     onCopyEdit={() => {
                       const copyId = makeId()
@@ -68,7 +74,7 @@ function FolderPage({ state, folder, actions, onBack, onOpenSavingArea }) {
                   <div key={copy.id} className="screen-lock__top">
                     <FolderCard state={state} folder={copy} depth={0} ownerId={folder.id} trail={[folder.name]}
                       actions={actions} onOpenSavingArea={onOpenSavingArea}
-                      editingCopy onDone={() => setEditing(null)}
+                      editingCopy onDone={() => { actions.mergeIdenticalCopy(folder.id, copy.id); setEditing(null) }}
                       onBack={() => {
                         const entry = state.savingAreaEntries.find((e) => e.sourceType === 'folder' && e.sourceId === copy.id)
                         if (entry) actions.removeSavingAreaEntry(entry.id)
@@ -85,15 +91,12 @@ function FolderPage({ state, folder, actions, onBack, onOpenSavingArea }) {
       {savingOpen ? (
         <div className="screen-lock__top">
           <SavingFolderView state={state} ownerId={folder.id} title={folder.name}
-            onClose={() => setSavingOpen(false)}
-            onAdd={(entry) => actions.addSavingAreaEntry({ ownerFolderId: folder.id, ...entry })}
-            onRemove={(id) => actions.removeSavingAreaEntry(id)}
-            onRestore={(entry) => actions.restoreSavingAreaEntry(entry)}
-            onUpdateDefault={(id, amount) => actions.updateDefault(id, amount)}
-            onUpdateEntries={(ids, amount) => actions.updateEntryAmount(ids, amount)} />
+            onClose={() => setSavingOpen(false)} history={pageHistory} actions={actions}
+            onUpdateDefault={pageHistory.updateDefault}
+            onUpdateEntries={pageHistory.updateEntries} />
         </div>
       ) : (
-        <SavingArea title={`📁 ${folder.name}`} hint="Tap to open" hideAdd
+        <SavingArea title={`📁 ${folder.name}`} hint="Tap to open" hideAdd history={pageHistory}
           entries={state.savingAreaEntries.filter((e) => e.ownerFolderId === folder.id)}
           choices={{ checklists: [], folders: [] }}
           onOpen={() => setSavingOpen(true)} onAdd={() => {}} />
@@ -104,10 +107,12 @@ function FolderPage({ state, folder, actions, onBack, onOpenSavingArea }) {
           onCancel={() => setAdding(false)}
           onConfirm={(p) => {
             setAdding(false)
+            const id = makeId()
             actions.createFolder({
-              sectionId: folder.sectionId, parentFolderId: folder.id, name: p.name,
+              id, sectionId: folder.sectionId, parentFolderId: folder.id, name: p.name,
               usage: folder.usage, frequency: folder.frequency, recordCount: p.recordCount,
             })
+            pageHistory.logStruct({ t: 'addF', folderId: id })
           }} />
       )}
     </div>

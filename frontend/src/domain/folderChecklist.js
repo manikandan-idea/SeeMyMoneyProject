@@ -16,6 +16,8 @@ const SAVING_SOURCE_TYPES = ['checklist', 'folder']
 // Every period page (Today / This Month / This Year / Infrequent Items) is treated
 // as a folder, so it can own a Saving Area too. These ids are "virtual page folders":
 // they are not stored in `folders`, only used as `ownerFolderId`.
+import { hashString } from './hash.js'
+
 export const PAGE_OWNER_IDS = ['page:daily', 'page:monthly', 'page:yearly', 'page:occasional']
 export const isPageOwner = (id) => PAGE_OWNER_IDS.includes(id)
 export function pageOwnerId(usage) {
@@ -327,14 +329,31 @@ export function updateChecklistTemplate(state, checklistId, patch) {
   next.transactionType = resolveTransactionType(folder, next.transactionType)
   next.frequency = resolveChecklistFrequency(folder, next.frequency)
   next.updatedAt = nowIso()
-  return { ...state, checklists: state.checklists.map((c) => (c.id === checklistId ? next : c)) }
+  return { ...state, savingAreaEntries: freezeEntries(state, checklist), checklists: state.checklists.map((c) => (c.id === checklistId ? next : c)) }
+}
+
+// Older entries that never stored their own amount / type keep the values the checklist has NOW,
+// so a later edit or delete of the checklist cannot change them.
+function freezeEntries(state, checklist) {
+  const needs = (e) => e.sourceType === 'checklist' && e.sourceId === checklist.id && (e.amount === undefined || e.transactionType === undefined)
+  if (!state.savingAreaEntries.some(needs)) return state.savingAreaEntries
+  return state.savingAreaEntries.map((e) => (
+    e.sourceType === 'checklist' && e.sourceId === checklist.id && (e.amount === undefined || e.transactionType === undefined)
+      ? (() => {
+        const amount = e.amount ?? checklist.defaultAmount
+        const transactionType = e.transactionType ?? checklist.transactionType
+        return { ...e, amount, transactionType, hash: entryHash(e.titleSnapshot, transactionType, amount) }
+      })()
+      : e
+  ))
 }
 
 // Removes ONLY the reusable template. `transactions` and `savingAreaEntries`
 // are passed through untouched (same array references). Unknown id: no-op.
 export function deleteChecklistTemplate(state, checklistId) {
   if (!state.checklists.some((c) => c.id === checklistId)) return state
-  return { ...state, checklists: state.checklists.filter((c) => c.id !== checklistId) }
+  const gone = state.checklists.find((c) => c.id === checklistId)
+  return { ...state, savingAreaEntries: freezeEntries(state, gone), checklists: state.checklists.filter((c) => c.id !== checklistId) }
 }
 
 // ---------- Saving Area ----------
@@ -343,7 +362,86 @@ export function deleteChecklistTemplate(state, checklistId) {
 // Every call appends ONE new SavingAreaEntry (own id). The source checklist /
 // folder is not changed. Repeated adds make separate rows (never a counter).
 // Not a transaction — `transactions` is never touched.
+// ---------- fingerprints (content hashes) ----------
+// Every checklist and folder has a fingerprint of what is INSIDE it (names, amounts, types,
+// settings, and everything nested). Ids and dates are not part of it. Same content -> same hash;
+// any edit -> a different hash. The Saving Area uses it to tell "the same thing again" from
+// "something that has changed since".
+const norm = (v) => (v === undefined || v === null ? '' : v)
+
+// a checklist record in a Saving Area: its title, type and amount
+export function entryHash(title, transactionType, amount) {
+  return hashString(JSON.stringify(['k', String(norm(title)).trim(), norm(transactionType), Number(amount) || 0]))
+}
+
+export function hashChecklist(checklist) {
+  return hashString(JSON.stringify([
+    'c', String(norm(checklist.title)).trim(), norm(checklist.transactionType),
+    Number(checklist.defaultAmount) || 0, Number(checklist.baseRecord) || 0,
+  ]))
+}
+
+export function hashFolder(state, folderId, seen = new Set()) {
+  const folder = state.folders.find((f) => f.id === folderId)
+  if (!folder || seen.has(folderId)) return hashString('missing')
+  const next = new Set(seen).add(folderId)
+  const lists = state.checklists.filter((c) => c.folderId === folderId).map(hashChecklist).sort()
+  const kids = state.folders.filter((f) => f.parentFolderId === folderId && !f.hidden).map((f) => hashFolder(state, f.id, next)).sort()
+  const records = state.savingAreaEntries.filter((e) => e.ownerFolderId === folderId).map((e) => (
+    e.sourceType === 'checklist'
+      ? (e.hash ?? entryHash(e.titleSnapshot, e.transactionType, e.amount))
+      : hashFolder(state, e.sourceId, next)
+  )).sort()
+  return hashString(JSON.stringify([
+    'f', String(norm(folder.name)).trim(), norm(folder.usage), norm(folder.frequency),
+    folder.recordCount ?? 1, Boolean(folder.othersEnabled), lists, kids, records,
+  ]))
+}
+
+// Adding to a Saving Area always puts a separate, independent item there (a snapshot):
+//  * a checklist record stores its own title, type and amount;
+//  * a folder is a fresh deep copy (its own checklists, folders and records).
+// After that, editing / deleting the original never touches what is already in the Saving Area,
+// and the Saving Area never touches the original. If the thing being added has the SAME
+// fingerprint as something already in this Saving Area, it is that same item again (count +1);
+// if anything differs, it is a new item, even with the same name.
 export function addSavingAreaEntry(state, input) {
+  if (input.cloneOf) { // "+" on a Saving Area row: one more of exactly that record
+    const src = state.savingAreaEntries.find((e) => e.id === input.cloneOf)
+    if (!src) throw new Error('Saving Area entry to repeat does not exist.')
+    const id = input.id && !state.savingAreaEntries.some((e) => e.id === input.id) ? input.id : makeId()
+    return { ...state, savingAreaEntries: [...state.savingAreaEntries, { ...src, id, addedAt: nowIso() }] }
+  }
+  if (input.sourceType === 'folder') {
+    const source = requireFolder(state, input.sourceId)
+    if (input.sourceId === input.ownerFolderId) throw new Error('A folder cannot be added to its own Saving Area.')
+    const wanted = hashFolder(state, source.id)
+    const same = state.savingAreaEntries.find((e) => (
+      e.ownerFolderId === input.ownerFolderId && e.sourceType === 'folder'
+      && state.folders.some((f) => f.id === e.sourceId) && hashFolder(state, e.sourceId) === wanted
+    ))
+    if (same) return addEntryDirect(state, { ...input, sourceId: same.sourceId }) // the same folder again
+    return copyFolderToSavingArea(state, { folderId: source.id, ownerFolderId: input.ownerFolderId, entryId: input.id, sectionId: input.sectionId })
+  }
+  return addEntryDirect(state, input)
+}
+
+// "+ Edit" copy finished: if it ended up identical to a folder already in this Saving Area, it IS
+// that folder: merge them (the entry points at the existing one and the extra copy is removed).
+export function mergeIdenticalCopy(state, ownerFolderId, copyId) {
+  const mine = state.savingAreaEntries.find((e) => e.ownerFolderId === ownerFolderId && e.sourceType === 'folder' && e.sourceId === copyId)
+  if (!mine || !state.folders.some((f) => f.id === copyId)) return state
+  const wanted = hashFolder(state, copyId)
+  const twin = state.savingAreaEntries.find((e) => (
+    e.ownerFolderId === ownerFolderId && e.sourceType === 'folder' && e.sourceId !== copyId
+    && state.folders.some((f) => f.id === e.sourceId) && hashFolder(state, e.sourceId) === wanted
+  ))
+  if (!twin) return state
+  const removed = removeSavingAreaEntry(state, mine.id) // also removes the now-unused copy
+  return addEntryDirect(removed, { ownerFolderId, sourceType: 'folder', sourceId: twin.sourceId, id: mine.id })
+}
+
+function addEntryDirect(state, input) {
   const pageOwned = isPageOwner(input.ownerFolderId)
   const owner = pageOwned ? { id: input.ownerFolderId, sectionId: null } : requireFolder(state, input.ownerFolderId)
   if (!pageOwned && input.sectionId !== undefined && input.sectionId !== owner.sectionId) {
@@ -372,14 +470,19 @@ export function addSavingAreaEntry(state, input) {
     sourceType: input.sourceType,
     sourceId: input.sourceId,
     titleSnapshot,
-    // Optional per-entry amount (period-page "Other"): this entry counts with THIS amount;
-    // the reusable checklist and its default are not changed.
-    ...(input.sourceType === 'checklist' && Number(input.amount) > 0
-      ? { amount: Math.round(Number(input.amount) * 100) / 100 } : {}),
+    ...(input.sourceType === 'checklist' ? checklistSnapshot(state, input) : {}),
     addedAt: nowIso(),
   }
   return { ...state, savingAreaEntries: [...state.savingAreaEntries, entry] }
 }
+
+function checklistSnapshot(state, input) {
+  const c = requireChecklist(state, input.sourceId)
+  const amount = Number(input.amount) > 0 ? Number(input.amount) : c.defaultAmount
+  const value = Math.round(Number(amount) * 100) / 100
+  return { amount: value, transactionType: c.transactionType, hash: entryHash(c.title, c.transactionType, value) }
+}
+
 
 // "+ Edit" on a page folder: makes an independent COPY of the folder (inner folders and
 // checklist templates, new ids, no transactions) and puts it into `ownerFolderId`'s
@@ -392,77 +495,161 @@ export function copyFolderToSavingArea(state, input) {
   const rootId = chosenId(state, state.folders, input.id, 'Folder')
   const newFolders = []
   const newChecklists = []
-  function copy(folder, id, parentFolderId, root) {
+  const folderMap = new Map() // old folder id -> copy id
+  const checklistMap = new Map()
+  function copy(folder, id, parentFolderId, root, origin) {
+    folderMap.set(folder.id, id)
     newFolders.push({
       ...folder, id, parentFolderId, hidden: false,
-      ...(root ? { savingCopy: true } : {}),
+      ...(root ? { savingCopy: true, copiedFrom: origin } : { copiedFrom: undefined }),
       createdAt: at, updatedAt: at,
     })
     for (const c of state.checklists) {
-      if (c.folderId === folder.id) newChecklists.push({ ...c, id: makeId(), folderId: id, createdAt: at, updatedAt: at })
+      if (c.folderId === folder.id) {
+        const cid = makeId()
+        checklistMap.set(c.id, cid)
+        newChecklists.push({ ...c, id: cid, folderId: id, createdAt: at, updatedAt: at })
+      }
     }
     for (const child of state.folders) {
       if (child.parentFolderId === folder.id && !child.hidden) copy(child, makeId(), id, false)
     }
   }
-  copy(original, rootId, null, true)
+  const originOf = (f) => f.copiedFrom ?? f.id
+  copy(original, rootId, null, true, originOf(original))
+  // Whole-folder entries inside the copied tree point at other Saving Area copies: copy those too,
+  // so the new copy shares nothing with anything else.
+  for (let grew = true; grew;) {
+    grew = false
+    for (const e of state.savingAreaEntries) {
+      if (!folderMap.has(e.ownerFolderId) || e.sourceType !== 'folder' || folderMap.has(e.sourceId)) continue
+      const src = state.folders.find((f) => f.id === e.sourceId)
+      if (!src) continue
+      copy(src, makeId(), null, true, originOf(src))
+      grew = true
+    }
+  }
+  // the copy starts with the same Saving Area entries as the original (re-pointed at the copies)
+  const newEntries = state.savingAreaEntries
+    .filter((e) => folderMap.has(e.ownerFolderId))
+    .map((e) => ({
+      ...e,
+      id: makeId(),
+      ownerFolderId: folderMap.get(e.ownerFolderId),
+      sourceId: e.sourceType === 'checklist' ? (checklistMap.get(e.sourceId) ?? e.sourceId) : (folderMap.get(e.sourceId) ?? e.sourceId),
+    }))
   const withCopy = {
     ...state,
-    folders: [...state.folders, ...newFolders],
+    folders: [...state.folders, ...newFolders.map((f) => (f.copiedFrom === undefined ? (({ copiedFrom, ...rest }) => rest)(f) : f))],
     checklists: [...state.checklists, ...newChecklists],
+    savingAreaEntries: [...state.savingAreaEntries, ...newEntries],
   }
-  return addSavingAreaEntry(withCopy, {
+  return addEntryDirect(withCopy, {
     ownerFolderId: input.ownerFolderId, sourceType: 'folder', sourceId: rootId,
+    ...(input.entryId ? { id: input.entryId } : {}),
   })
 }
-
-// Sets the amount of the given checklist entries (Saving Area folder view ✎). The reusable
-// checklist and its default are not changed.
 export function updateSavingAreaEntryAmount(state, entryIds, amount) {
   if (!(Number(amount) > 0)) throw new Error('Amount must be a number greater than 0.')
   const ids = new Set(entryIds)
   const value = Math.round(Number(amount) * 100) / 100
   return {
     ...state,
-    savingAreaEntries: state.savingAreaEntries.map((e) => (ids.has(e.id) && e.sourceType === 'checklist' ? { ...e, amount: value } : e)),
+    savingAreaEntries: state.savingAreaEntries.map((e) => (ids.has(e.id) && e.sourceType === 'checklist' ? { ...e, amount: value, hash: entryHash(e.titleSnapshot, e.transactionType, value) } : e)),
   }
 }
 
-// Puts a removed entry back (undo / redo in the Saving Area folder view). No-op when it exists
-// or its source is gone.
-export function restoreSavingAreaEntry(state, entry) {
+// Puts a removed entry back (undo / redo in the Saving Area folder view), together with the
+// Saving Area copy it pointed at when that copy went with it (`tree` from collectEntryTree).
+// No-op when it exists or its source is gone.
+export function restoreSavingAreaEntry(state, entry, tree = null) {
   if (!entry || state.savingAreaEntries.some((e) => e.id === entry.id)) return state
+  let next = state
+  if (tree) {
+    const has = (list, id) => list.some((x) => x.id === id)
+    next = {
+      ...state,
+      folders: [...state.folders, ...tree.folders.filter((f) => !has(state.folders, f.id))],
+      checklists: [...state.checklists, ...tree.checklists.filter((c) => !has(state.checklists, c.id))],
+      savingAreaEntries: [...state.savingAreaEntries, ...tree.entries.filter((e) => !has(state.savingAreaEntries, e.id))],
+    }
+  }
   const sourceOk = entry.sourceType === 'checklist'
-    ? state.checklists.some((c) => c.id === entry.sourceId)
-    : state.folders.some((f) => f.id === entry.sourceId)
+    ? true // a checklist entry carries its own snapshot, so it never needs the original
+    : next.folders.some((f) => f.id === entry.sourceId)
   if (!sourceOk) return state
-  return { ...state, savingAreaEntries: [...state.savingAreaEntries, entry] }
+  return { ...next, savingAreaEntries: [...next.savingAreaEntries, entry] }
 }
 
-// Removes exactly ONE Saving Area entry (by its own id). Nothing else changes:
-// the original checklist/folder, transactions and other entries stay as they are.
+// Removing the LAST entry that points at a Saving Area copy also removes the copy (its folders,
+// checklists and own entries): it only exists for that entry. This returns exactly what would go,
+// so undo can bring it back.
+export function collectEntryTree(state, entry) {
+  const copy = entry?.sourceType === 'folder' ? state.folders.find((f) => f.id === entry.sourceId) : null
+  const others = state.savingAreaEntries.filter((e) => e.id !== entry?.id)
+  if (!copy?.savingCopy || others.some((e) => e.sourceType === 'folder' && e.sourceId === copy.id)) return null
+  const gone = new Set([copy.id])
+  for (let grew = true; grew;) {
+    grew = false
+    for (const f of state.folders) if (f.parentFolderId && gone.has(f.parentFolderId) && !gone.has(f.id)) { gone.add(f.id); grew = true }
+  }
+  // copies referenced by entries inside the tree go with it, unless something else still uses them
+  for (let grew = true; grew;) {
+    grew = false
+    for (const e of others) {
+      if (!gone.has(e.ownerFolderId) || e.sourceType !== 'folder' || gone.has(e.sourceId)) continue
+      const sub = state.folders.find((f) => f.id === e.sourceId)
+      const stillUsed = others.some((x) => !gone.has(x.ownerFolderId) && x.sourceType === 'folder' && x.sourceId === e.sourceId)
+      if (sub?.savingCopy && !stillUsed) {
+        gone.add(sub.id)
+        for (const f of state.folders) if (f.parentFolderId === sub.id) gone.add(f.id)
+        grew = true
+      }
+    }
+  }
+  return {
+    folders: state.folders.filter((f) => gone.has(f.id)),
+    checklists: state.checklists.filter((c) => gone.has(c.folderId)),
+    entries: state.savingAreaEntries.filter((e) => gone.has(e.ownerFolderId)),
+  }
+}
+
 export function removeSavingAreaEntry(state, entryId) {
-  if (!state.savingAreaEntries.some((e) => e.id === entryId)) {
-    throw new Error(`Saving Area entry "${entryId}" does not exist.`)
-  }
   const entry = state.savingAreaEntries.find((e) => e.id === entryId)
+  if (!entry) throw new Error(`Saving Area entry "${entryId}" does not exist.`)
+  const tree = collectEntryTree(state, entry)
   const next = { ...state, savingAreaEntries: state.savingAreaEntries.filter((e) => e.id !== entryId) }
-  // A "+ Edit" copy exists only for its Saving Area entry: when the last entry goes, the copy goes too.
-  const copy = entry.sourceType === 'folder' ? state.folders.find((f) => f.id === entry.sourceId) : null
-  if (copy?.savingCopy && !next.savingAreaEntries.some((e) => e.sourceType === 'folder' && e.sourceId === copy.id)) {
-    const gone = new Set([copy.id])
-    for (let grew = true; grew;) {
-      grew = false
-      for (const f of next.folders) if (f.parentFolderId && gone.has(f.parentFolderId) && !gone.has(f.id)) { gone.add(f.id); grew = true }
-    }
-    return {
-      ...next,
-      folders: next.folders.filter((f) => !gone.has(f.id)),
-      checklists: next.checklists.filter((c) => !gone.has(c.folderId)),
-      savingAreaEntries: next.savingAreaEntries.filter((e) => !gone.has(e.ownerFolderId)),
-    }
+  if (!tree) return next
+  const gone = new Set(tree.folders.map((f) => f.id))
+  return {
+    ...next,
+    folders: next.folders.filter((f) => !gone.has(f.id)),
+    checklists: next.checklists.filter((c) => !gone.has(c.folderId)),
+    savingAreaEntries: next.savingAreaEntries.filter((e) => !gone.has(e.ownerFolderId)),
   }
-  return next
+}
+
+export function groupSavingAreaEntries(entries) {
+  const groups = new Map()
+  for (const entry of entries) {
+    // entries with their own amount form a separate row per amount
+    const key = entry.hash ? `${entry.sourceType}:h:${entry.hash}` : `${entry.sourceType}:${entry.sourceId}${entry.amount !== undefined ? `:${entry.amount}` : ''}`
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        sourceType: entry.sourceType,
+        sourceId: entry.sourceId,
+        titleSnapshot: entry.titleSnapshot,
+        ...(entry.amount !== undefined ? { amount: entry.amount } : {}),
+        count: 0,
+        entries: [],
+      })
+    }
+    const group = groups.get(key)
+    group.count += 1
+    group.entries.push(entry)
+  }
+  return [...groups.values()]
 }
 
 // Safe movement primitive: reassign every entry owned by sourceFolderId to
@@ -487,8 +674,6 @@ export function settleSavingAreaEntries(state, { sourceFolderId, targetFolderId 
     ),
   }
 }
-
-// ---------- read-only selectors ----------
 
 // Tree for one section. Hidden folders ARE included (check `.hidden`).
 // Returns { sectionId, folders: Node[], byId: { [folderId]: Node } } where
@@ -540,29 +725,4 @@ export function selectHiddenFolders(state) {
     out.push({ folder, sectionId: folder.sectionId, names })
   }
   return out
-}
-
-// Display-only grouping of Saving Area rows ("Tea ×3"). The underlying rows
-// stay separate. Returns [{ key, sourceType, sourceId, titleSnapshot, count, entries }].
-export function groupSavingAreaEntries(entries) {
-  const groups = new Map()
-  for (const entry of entries) {
-    // entries with their own amount form a separate row per amount
-    const key = `${entry.sourceType}:${entry.sourceId}${entry.amount !== undefined ? `:${entry.amount}` : ''}`
-    if (!groups.has(key)) {
-      groups.set(key, {
-        key,
-        sourceType: entry.sourceType,
-        sourceId: entry.sourceId,
-        titleSnapshot: entry.titleSnapshot,
-        ...(entry.amount !== undefined ? { amount: entry.amount } : {}),
-        count: 0,
-        entries: [],
-      })
-    }
-    const group = groups.get(key)
-    group.count += 1
-    group.entries.push(entry)
-  }
-  return [...groups.values()]
 }
