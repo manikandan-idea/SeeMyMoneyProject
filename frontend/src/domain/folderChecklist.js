@@ -525,7 +525,8 @@ export function copyFolderToSavingArea(state, input) {
       if (!folderMap.has(e.ownerFolderId) || e.sourceType !== 'folder' || folderMap.has(e.sourceId)) continue
       const src = state.folders.find((f) => f.id === e.sourceId)
       if (!src) continue
-      copy(src, makeId(), null, true, originOf(src))
+      // keep the link to the matching inner folder of the NEW tree, so its Records box stays right
+      copy(src, makeId(), null, true, folderMap.get(originOf(src)) ?? originOf(src))
       grew = true
     }
   }

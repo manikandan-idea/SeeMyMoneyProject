@@ -232,9 +232,10 @@ export function checklistRecordCount(state, checklist) {
   return (checklist.baseRecord ?? 0) + recorded + added
 }
 
-// Records of an inner folder inside `parentId` = its record count + "+ Add item" taps.
+// Records of an inner folder inside `parentId`: the records added to the Saving Area, or (none added yet) its own record count.
 export function folderRecordCount(state, folder, parentId = folder.parentFolderId) {
-  return (folder.recordCount ?? 1) + folderItemEntries(state, folder, parentId).length
+  const added = folderItemEntries(state, folder, parentId).length
+  return added > 0 ? added : (folder.recordCount ?? 1) // what the Records box shows = how many times it counts
 }
 
 // Entries in `ownerId`'s Saving Area that are copies of `folder` ("+ Add item" / "+ Edit" taps).
@@ -251,6 +252,21 @@ function valueOf(state, ownerId, seen) {
   const out = emptyValue()
   if (seen.has(ownerId)) return out // safety: never loop
   const next = new Set(seen).add(ownerId)
+  // A FOLDER also counts the folders inside it by their Records box (a page does not):
+  // an inner folder counts `Records` times (default 1) until you add it to this folder's Saving
+  // Area with "+ Add item" / "+ Edit"; from then on only the records you added count, so
+  // nothing is ever counted twice.
+  if (!String(ownerId).startsWith('page:')) {
+    for (const k of state?.folders ?? []) {
+      if (k.parentFolderId !== ownerId || k.hidden || k.savingCopy) continue
+      if (folderItemEntries(state, k, ownerId).length > 0) continue
+      const v = valueOf(state, k.id, next)
+      const times = k.recordCount ?? 1
+      out.income += v.income * times
+      out.expense += v.expense * times
+      out.saving += v.saving * times
+    }
+  }
   for (const e of state?.savingAreaEntries ?? []) {
     if (e.ownerFolderId !== ownerId) continue
     if (e.sourceType === 'checklist') {

@@ -8,7 +8,7 @@ import {
   selectHiddenFolders, groupSavingAreaEntries, periodKeyFor,
   copyFolderToSavingArea, removeSavingAreaEntry, restoreSavingAreaEntry, collectEntryTree, hashFolder, mergeIdenticalCopy,
 } from './folderChecklist.js'
-import { calculateOwnerValue, calculateFolderView, checklistRecordCount } from './analytics.js'
+import { calculateOwnerValue, calculateFolderView, checklistRecordCount, folderRecordCount } from './analytics.js'
 import { createTransaction } from './records.js'
 
 const base = () => ({
@@ -352,8 +352,8 @@ test('folder value = its Saving Area only: one record of 7000 is 7000, never dou
   t = addSavingAreaEntry(t, { ownerFolderId: inner.id, sourceType: 'checklist', sourceId: lunch.id })
   t = addSavingAreaEntry(t, { ownerFolderId: inner.id, sourceType: 'checklist', sourceId: lunch.id })
   assert.equal(calculateFolderView(t, inner.id).expense, 7000)
-  // the inner folder is not in the parent's Saving Area yet -> the parent shows nothing for it
-  assert.equal(calculateFolderView(t, daily.id).expense, 0)
+  // the inner folder counts once (its Records box says 1) until it is added to the parent's Saving Area
+  assert.equal(calculateFolderView(t, daily.id).expense, 7000)
   // ONE record (a "+ Edit" copy) in the parent's Saving Area -> parent = that one record, 7000
   const own = { ...t, savingAreaEntries: t.savingAreaEntries.filter((e) => e.ownerFolderId === inner.id), transactions: [] }
   const u = copyFolderToSavingArea(own, { folderId: inner.id, ownerFolderId: daily.id, id: 'cp2' })
@@ -497,4 +497,33 @@ test('fingerprints: finishing a "+ Edit" with no change merges into the identica
   assert.equal(t.folders.filter((f) => f.savingCopy).length, 1)
   assert.equal(t.savingAreaEntries.filter((e) => e.ownerFolderId === 'page:daily').length, 2)
   assert.equal(calculateOwnerValue(t, 'page:daily').expense, 200)
+})
+
+test('folder total reflects the folders inside it by their Records box, and never twice', () => {
+  let t = createFolder(base(), { sectionId: 'expense', parentFolderId: null, name: 'lunch folder', usage: 'daily' })
+  const lunch = lastFolder(t)
+  t = createFolder(t, { sectionId: 'expense', parentFolderId: lunch.id, name: 'Folder 1' })
+  const f1 = lastFolder(t)
+  t = createChecklistTemplate(t, { folderId: f1.id, title: 'x', defaultAmount: 3000 })
+  const x = lastList(t)
+  t = addSavingAreaEntry(t, { ownerFolderId: f1.id, sourceType: 'checklist', sourceId: x.id })
+  t = addSavingAreaEntry(t, { ownerFolderId: f1.id, sourceType: 'checklist', sourceId: x.id })
+  assert.equal(calculateFolderView(t, f1.id).expense, 6000)
+  assert.equal(calculateFolderView(t, lunch.id).expense, 6000)         // Folder 1 (Records 1) is inside lunch
+  assert.equal(folderRecordCount(t, f1, lunch.id), 1)
+  // "+ Add item" on Folder 1 inside lunch: one record added -> still 6000, Records 1, not doubled
+  t = addSavingAreaEntry(t, { ownerFolderId: lunch.id, sourceType: 'folder', sourceId: f1.id })
+  assert.equal(calculateFolderView(t, lunch.id).expense, 6000)
+  assert.equal(folderRecordCount(t, f1, lunch.id), 1)
+  // again (same content, same record) -> 2 records -> 12000
+  t = addSavingAreaEntry(t, { ownerFolderId: lunch.id, sourceType: 'folder', sourceId: f1.id })
+  assert.equal(calculateFolderView(t, lunch.id).expense, 12000)
+  assert.equal(folderRecordCount(t, f1, lunch.id), 2)
+  // a change inside Folder 1 reaches lunch's card at once... but not the records already added
+  t = addSavingAreaEntry(t, { ownerFolderId: f1.id, sourceType: 'checklist', sourceId: x.id })
+  assert.equal(calculateFolderView(t, f1.id).expense, 9000)
+  assert.equal(calculateFolderView(t, lunch.id).expense, 12000)
+  // lunch added to the day page: the copy carries Folder 1 and its records without doubling
+  t = addSavingAreaEntry(t, { ownerFolderId: 'page:daily', sourceType: 'folder', sourceId: lunch.id })
+  assert.equal(calculateOwnerValue(t, 'page:daily').expense, 12000)
 })
