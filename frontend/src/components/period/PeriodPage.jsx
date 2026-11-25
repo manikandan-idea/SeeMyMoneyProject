@@ -21,6 +21,7 @@ import { calculateOwnerValue } from '../../domain/analytics.js'
 import { parseRecordCount } from '../cards/AdvancedSettings.jsx'
 import SavingFolderView from '../cards/SavingFolderView.jsx'
 import FolderCard from '../cards/FolderCard.jsx'
+import QuickAdd from '../cards/QuickAdd.jsx'
 import { makeId, pageOwnerId } from '../../domain/folderChecklist.js'
 import { calculatePeriodTotals, getPeriodRange } from '../../domain/analytics.js'
 
@@ -188,7 +189,13 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpe
       </nav>
 
       {(editing || savingOpen) && <div className="screen-lock" aria-hidden="true" />}
-      {heading && <h1 className="period__heading">{heading}</h1>}
+      {tab.usage ? (
+        <div className="qa-headrow">
+          {heading ? <h1 className="period__heading">{heading}</h1> : <span />}
+          <QuickAdd state={state} ownerId={pageOwner} history={pageHistory}
+            where={{ today: 'today’s', month: 'this month’s', year: 'this year’s' }[tab.id] ? `${{ today: 'today’s', month: 'this month’s', year: 'this year’s' }[tab.id]} Saving Area` : `${tab.label}’ Saving Area`} />
+        </div>
+      ) : heading && <h1 className="period__heading">{heading}</h1>}
 
       <div className="period__boxes">
         <div className="pbox pbox--expense"><span>Spend</span><strong>{formatINR(view.totals.expense)}</strong></div>

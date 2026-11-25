@@ -205,16 +205,16 @@ export function calculateFolderBreakdown(state, sectionId, filters = {}) {
 
 // ---------- folder / page value (what the Spend / Received / Savings boxes show) ----------
 //
-// ONE rule for every folder card, folder page, floating sheet, Saving Area view and period page:
+// ONE rule for EVERY Spend / Received / Savings number in the app (day / month / year pages,
+// folder pages, folder cards, floating sheets, Saving Area views):
 //
-//   value(page or folder) = what its Saving Area holds, nothing else
-//     * a checklist entry counts its own amount (or the checklist default) under the checklist's type
-//     * a folder entry counts that folder's value (its own Saving Area) once per entry
+//   value(page or folder) = what is in ITS Saving Area, nothing else
+//     * a checklist record counts its own amount under its own type (a snapshot)
+//     * a folder record counts that folder's value (its own Saving Area) once per record
 //
-// Nothing is added twice: an inner folder or a checklist that is not in the Saving Area adds
-// nothing, and a folder is never counted both as itself and as an entry. Because this is derived
-// from the current state on every render, any change (amount edited, record added or removed,
-// inner folder changed) shows in the card, in every parent folder and on the page at once.
+// The Checklists container and the Folders container are never counted, so a total can never
+// show money that the Saving Area does not list. Derived from the current data on every render,
+// so a change anywhere shows in the card, in every parent and on the page at once.
 const round = (n) => Math.round((n + Number.EPSILON) * 100) / 100
 const emptyValue = () => ({ income: 0, expense: 0, saving: 0 })
 
@@ -252,21 +252,6 @@ function valueOf(state, ownerId, seen) {
   const out = emptyValue()
   if (seen.has(ownerId)) return out // safety: never loop
   const next = new Set(seen).add(ownerId)
-  // A FOLDER also counts the folders inside it by their Records box (a page does not):
-  // an inner folder counts `Records` times (default 1) until you add it to this folder's Saving
-  // Area with "+ Add item" / "+ Edit"; from then on only the records you added count, so
-  // nothing is ever counted twice.
-  if (!String(ownerId).startsWith('page:')) {
-    for (const k of state?.folders ?? []) {
-      if (k.parentFolderId !== ownerId || k.hidden || k.savingCopy) continue
-      if (folderItemEntries(state, k, ownerId).length > 0) continue
-      const v = valueOf(state, k.id, next)
-      const times = k.recordCount ?? 1
-      out.income += v.income * times
-      out.expense += v.expense * times
-      out.saving += v.saving * times
-    }
-  }
   for (const e of state?.savingAreaEntries ?? []) {
     if (e.ownerFolderId !== ownerId) continue
     if (e.sourceType === 'checklist') {
@@ -286,6 +271,11 @@ function valueOf(state, ownerId, seen) {
 export function calculateOwnerValue(state, ownerId) {
   const v = valueOf(state, ownerId, new Set())
   return { income: round(v.income), expense: round(v.expense), saving: round(v.saving) }
+}
+
+// Same rule, kept as a named entry point for the Saving Area views.
+export function calculateSavingAreaValue(state, ownerId) {
+  return calculateOwnerValue(state, ownerId)
 }
 
 // What a folder card / folder page shows: the same numbers everywhere.

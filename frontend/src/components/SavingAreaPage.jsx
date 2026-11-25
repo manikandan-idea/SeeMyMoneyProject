@@ -17,7 +17,7 @@
 import { useState } from 'react'
 import { formatINR } from '../utils/format.js'
 import { groupSavingAreaEntries } from '../domain/folderChecklist.js'
-import { calculateFolderView, calculateOwnerValue } from '../domain/analytics.js'
+import { calculateFolderView, calculateSavingAreaValue } from '../domain/analytics.js'
 import './savingAreaPage.css'
 
 function Icon({ d, size = 20 }) {
@@ -47,7 +47,7 @@ function SavingAreaPage({ state, ownerId, title, onBack, onRemoveEntry, onUpdate
     .filter((g) => g.sourceType === 'folder')
     .map((g) => ({ ...g, folder: state.folders.find((f) => f.id === g.sourceId) ?? null }))
 
-  const totals = calculateOwnerValue(state, ownerId) // checklist entries + whole-folder entries
+  const totals = calculateSavingAreaValue(state, ownerId) // checklist entries + whole-folder entries
 
   const removeOne = (group) => onRemoveEntry(group.entries[group.entries.length - 1].id)
 

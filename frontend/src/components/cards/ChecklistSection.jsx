@@ -21,6 +21,7 @@ import { makeId } from '../../domain/folderChecklist.js'
 import AdvancedSettings, { parseRecordCount } from './AdvancedSettings.jsx'
 import ChecklistRow from './ChecklistRow.jsx'
 import Svg from './Svg.jsx'
+import { formatINR } from '../../utils/format.js'
 
 const TYPE_TO_ID = { spend: 'expense', received: 'income', savings: 'saving' }
 
@@ -30,7 +31,28 @@ function nextName(base, names) {
   return `${base} ${n}`
 }
 
-function ChecklistSection({ lists, state, trail = [], actions, onCreate, onHistory, variant = 'default', onAddToSaving, hideAdd = false }) {
+const TYPE_LABEL = { expense: 'Spend', income: 'Received', saving: 'Savings' }
+const TRASH = 'M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3'
+
+// A Quick add record shown under Checklists of a Saving Area copy: it is only in that copy's
+// Saving Area (not a checklist template), so "+" repeats it and the trash removes one record.
+function QuickRow({ group, onRepeat, onRemove }) {
+  const type = TYPE_LABEL[group.entries[0]?.transactionType] ?? ''
+  return (
+    <div className="cr" data-quick="true">
+      <div className="cr__count" role="status" aria-label={`Records: ${group.count}`}><b>{group.count}</b><span>Records</span></div>
+      <span className="cr__name" title={`Quick add · ${type}`}>{group.titleSnapshot}</span>
+      <span className="cr__def" style={{ cursor: 'default' }} title={type}>{formatINR(group.amount)}</span>
+      <button type="button" className="cr__rec" title={`Add another ${formatINR(group.amount)}`}
+        aria-label={`Add another record of ${group.titleSnapshot}`} onClick={onRepeat}>+</button>
+      <button type="button" className="cr__del" title="Remove one record" aria-label={`Remove one record of ${group.titleSnapshot}`} onClick={onRemove}>
+        <Svg d={TRASH} />
+      </button>
+    </div>
+  )
+}
+
+function ChecklistSection({ lists, state, trail = [], actions, onCreate, onHistory, variant = 'default', onAddToSaving, hideAdd = false, quickGroups = [], onQuickRepeat, onQuickRemove }) {
   const nameRef = useRef(null)
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
@@ -123,7 +145,7 @@ function ChecklistSection({ lists, state, trail = [], actions, onCreate, onHisto
         </form>
       )}
       <div className="fc__list">
-        {lists.length === 0 && <div className="fc__empty">No checklists yet</div>}
+        {lists.length === 0 && quickGroups.length === 0 && <div className="fc__empty">No checklists yet</div>}
         {lists.map((c) => (
           <ChecklistRow key={c.id} checklist={c} trail={trail} variant={variant}
             onAddToSaving={() => onAddToSaving?.(c)}
@@ -138,6 +160,9 @@ function ChecklistSection({ lists, state, trail = [], actions, onCreate, onHisto
             onRemoveRecord={(txId) => actions.removeRecord(txId)}
             onRestoreRecord={(tx) => actions.restoreRecord(tx)}
             onDelete={() => removeRow(c)} />
+        ))}
+        {quickGroups.map((g) => (
+          <QuickRow key={g.key} group={g} onRepeat={() => onQuickRepeat?.(g)} onRemove={() => onQuickRemove?.(g)} />
         ))}
       </div>
     </div>

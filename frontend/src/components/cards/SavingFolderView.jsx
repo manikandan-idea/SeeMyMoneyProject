@@ -13,7 +13,7 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { formatINR } from '../../utils/format.js'
 import { groupSavingAreaEntries } from '../../domain/folderChecklist.js'
-import { calculateFolderView, calculateOwnerValue } from '../../domain/analytics.js'
+import { calculateFolderView, calculateSavingAreaValue } from '../../domain/analytics.js'
 import Svg from './Svg.jsx'
 import FolderCard from './FolderCard.jsx'
 import './cards.css'
@@ -81,7 +81,7 @@ function SavingFolderView({ state, ownerId, title, onClose, history, onUpdateDef
   const folders = groups.filter((g) => g.sourceType === 'folder')
   const removeOne = (g) => history.remove(g.entries[g.entries.length - 1])
 
-  const v = calculateOwnerValue(state, ownerId)
+  const v = calculateSavingAreaValue(state, ownerId)
   const totals = { expense: v.expense, income: v.income, saving: v.saving }
 
   return (

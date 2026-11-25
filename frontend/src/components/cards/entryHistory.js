@@ -18,6 +18,18 @@ export function useEntryHistory(ownerId, actions, state) {
     actions.removeSavingAreaEntry(entry.id)
     pushUndo(key, { t: 'rem', entry, tree })
   }
+  // Quick add: one-off records straight into this Saving Area (never a checklist template)
+  const quickAdd = (input) => {
+    const ids = Array.from({ length: input.records ?? 1 }, () => makeId())
+    actions.addQuickEntries({ ownerFolderId: ownerId, ...input, ids })
+    pushUndo(key, { t: 'quick', ids, input })
+    return ids
+  }
+  const undoQuick = (ids) => { // toast "Undo": take back exactly that Quick add
+    const top = h.undo[h.undo.length - 1]
+    if (top?.t === 'quick' && top.ids[0] === ids[0]) undo()
+    else actions.removeSavingAreaEntries(ids)
+  }
   const logStruct = (action) => pushUndo(key, action)
   const updateDefault = (id, amount) => {
     const c = state.checklists.find((x) => x.id === id)
@@ -35,6 +47,7 @@ export function useEntryHistory(ownerId, actions, state) {
     if (!a) return
     let keep = a
     if (a.t === 'add') actions.removeSavingAreaEntry(a.id)
+    else if (a.t === 'quick') actions.removeSavingAreaEntries(a.ids)
     else if (a.t === 'eamt') actions.updateEntryAmount(a.ids, a.from)
     else if (a.t === 'rem') actions.restoreSavingAreaEntry(a.entry, a.tree)
     else keep = revertStruct(a, state, actions)
@@ -44,10 +57,11 @@ export function useEntryHistory(ownerId, actions, state) {
     const a = h.redo[h.redo.length - 1]
     if (!a) return
     if (a.t === 'add') actions.addSavingAreaEntry({ ownerFolderId: ownerId, ...a.input, id: a.id })
+    else if (a.t === 'quick') actions.addQuickEntries({ ownerFolderId: ownerId, ...a.input, ids: a.ids })
     else if (a.t === 'eamt') actions.updateEntryAmount(a.ids, a.to)
     else if (a.t === 'rem') actions.removeSavingAreaEntry(a.entry.id)
     else reapplyStruct(a, actions)
     setHist(key, (x) => ({ undo: [...x.undo, a], redo: x.redo.slice(0, -1) }))
   }
-  return { add, remove, logStruct, updateDefault, updateEntries, undo, redo, canUndo: h.undo.length > 0, canRedo: h.redo.length > 0 }
+  return { add, remove, quickAdd, undoQuick, logStruct, updateDefault, updateEntries, undo, redo, canUndo: h.undo.length > 0, canRedo: h.redo.length > 0 }
 }

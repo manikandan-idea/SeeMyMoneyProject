@@ -727,3 +727,43 @@ export function selectHiddenFolders(state) {
   }
   return out
 }
+
+// ---------- Quick add ----------
+// A one-off checklist record put straight into a page's / folder's Saving Area. It is NOT a
+// checklist template (nothing is added to the Checklists list or any container): the record
+// carries its own name, type and amount. `records` identical records are added; identical
+// records group into one row (same fingerprint). `ids` lets undo / redo reuse the same ids.
+export function quickAddAutoName(state, ownerFolderId) {
+  const used = new Set(state.savingAreaEntries.filter((e) => e.ownerFolderId === ownerFolderId).map((e) => e.titleSnapshot))
+  let n = 1
+  while (used.has(`Checklist ${n}`)) n += 1
+  return `Checklist ${n}`
+}
+
+export function addQuickEntries(state, input) {
+  const amount = Number(String(input.amount).replace(/,/g, ''))
+  if (!(Number.isFinite(amount) && amount > 0)) throw new Error('Amount must be a number greater than 0.')
+  const records = input.records === undefined ? 1 : Number(input.records)
+  if (!Number.isInteger(records) || records < 1) throw new Error('Records must be a whole number of 1 or more.')
+  if (!SECTION_IDS.includes(input.transactionType)) throw new Error(`Invalid type "${input.transactionType}".`)
+  const pageOwned = isPageOwner(input.ownerFolderId)
+  const owner = pageOwned ? null : requireFolder(state, input.ownerFolderId)
+  const value = Math.round(amount * 100) / 100
+  const name = String(input.name ?? '').trim() || quickAddAutoName(state, input.ownerFolderId)
+  const sourceId = `quick:${makeId()}`
+  const at = nowIso()
+  const added = Array.from({ length: records }, (_, i) => ({
+    id: input.ids?.[i] && !state.savingAreaEntries.some((e) => e.id === input.ids[i]) ? input.ids[i] : makeId(),
+    sectionId: owner ? owner.sectionId : input.transactionType,
+    ownerFolderId: input.ownerFolderId,
+    sourceType: 'checklist',
+    sourceId,
+    titleSnapshot: name,
+    amount: value,
+    transactionType: input.transactionType,
+    hash: entryHash(name, input.transactionType, value),
+    quick: true,
+    addedAt: at,
+  }))
+  return { ...state, savingAreaEntries: [...state.savingAreaEntries, ...added] }
+}

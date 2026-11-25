@@ -35,7 +35,8 @@ import { formatINR } from '../../utils/format.js'
 import { calculateFolderView, folderRecordCount, folderItemEntries } from '../../domain/analytics.js'
 import { useHist, setHist, revertStruct, reapplyStruct } from './historyStore.js'
 import { useEntryHistory } from './entryHistory.js'
-import { makeId } from '../../domain/folderChecklist.js'
+import QuickAdd from './QuickAdd.jsx'
+import { makeId, groupSavingAreaEntries } from '../../domain/folderChecklist.js'
 import AdvancedSettings, { parseRecordCount } from './AdvancedSettings.jsx'
 import ChecklistSection from './ChecklistSection.jsx'
 import FolderPage from './FolderPage.jsx'
@@ -217,6 +218,11 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
     }
   }
 
+  // Quick add records live in a Saving Area COPY's own Saving Area: shown under that copy's
+  // Checklists. The original folder's Checklists container never shows them.
+  const quickGroups = folder.savingCopy
+    ? groupSavingAreaEntries(state.savingAreaEntries.filter((e) => e.ownerFolderId === folder.id && e.quick))
+    : []
   const cls = `fc fc--d${depth % 3}${depth > 0 ? ' fc--inner' : ''}${editingCopy ? ' fc--copy' : ''}${onCopyEdit ? ' fc--page' : ''}`
   const delTitle = itemEntries.length > 0 ? 'Remove one record' : 'Hide this folder'
   return (
@@ -225,6 +231,7 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
         <div className="fc__copynote">
           {onBack && <button type="button" className="fc__back" onClick={onBack} title="Discard this copy and go back, nothing changes">← Back</button>}
           <span>Editing a copy · saved in the Saving Area, the original is unchanged</span>
+          <QuickAdd state={state} ownerId={folder.id} history={folderHistory} where={`${folder.name} copy’s Saving Area`} />
         </div>
       )}
       <div className="fc__row">
@@ -280,6 +287,9 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
       {open && (
         <div className="fc__inside">
           <ChecklistSection lists={lists} state={state} trail={path} actions={actions} onHistory={log} hideAdd={!editMode}
+            quickGroups={quickGroups}
+            onQuickRepeat={(g) => folderHistory.add({ sourceType: 'checklist', sourceId: g.sourceId, cloneOf: g.entries[g.entries.length - 1].id })}
+            onQuickRemove={(g) => folderHistory.remove(g.entries[g.entries.length - 1])}
             onCreate={(p) => actions.createChecklist({ folderId: folder.id, sectionId: folder.sectionId, ...p })} />
 
           <div className="fc__sec">

@@ -13,6 +13,7 @@ import SavingArea from '../SavingArea.jsx'
 import ChecklistSection from './ChecklistSection.jsx'
 import FolderCard from './FolderCard.jsx'
 import SavingFolderView from './SavingFolderView.jsx'
+import QuickAdd from './QuickAdd.jsx'
 
 function FolderPage({ state, folder, actions, onBack, onOpenSavingArea }) {
   const [adding, setAdding] = useState(false)
@@ -28,7 +29,10 @@ function FolderPage({ state, folder, actions, onBack, onOpenSavingArea }) {
     <div className="fpage">
       <button type="button" className="fp__back" onClick={onBack}>← Back</button>
       {(editing || savingOpen) && <div className="screen-lock" aria-hidden="true" />}
-      <h1 className="period__heading">{folder.name}</h1>
+      <div className="qa-headrow">
+        <h1 className="period__heading">{folder.name}</h1>
+        <QuickAdd state={state} ownerId={folder.id} history={pageHistory} where={`${folder.name}’s Saving Area`} />
+      </div>
 
       <div className="period__boxes">
         <div className="pbox pbox--expense"><span>Spend</span><strong>{formatINR(totals.expense)}</strong></div>

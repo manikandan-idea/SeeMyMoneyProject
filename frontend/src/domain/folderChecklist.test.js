@@ -6,9 +6,9 @@ import {
   createChecklistTemplate, updateChecklistTemplate, deleteChecklistTemplate, updateSavingAreaEntryAmount,
   addSavingAreaEntry, settleSavingAreaEntries, selectFolderTree,
   selectHiddenFolders, groupSavingAreaEntries, periodKeyFor,
-  copyFolderToSavingArea, removeSavingAreaEntry, restoreSavingAreaEntry, collectEntryTree, hashFolder, mergeIdenticalCopy,
+  copyFolderToSavingArea, removeSavingAreaEntry, restoreSavingAreaEntry, collectEntryTree, hashFolder, mergeIdenticalCopy, addQuickEntries,
 } from './folderChecklist.js'
-import { calculateOwnerValue, calculateFolderView, checklistRecordCount, folderRecordCount } from './analytics.js'
+import { calculateOwnerValue, calculateFolderView, checklistRecordCount, folderRecordCount, calculateSavingAreaValue } from './analytics.js'
 import { createTransaction } from './records.js'
 
 const base = () => ({
@@ -352,8 +352,8 @@ test('folder value = its Saving Area only: one record of 7000 is 7000, never dou
   t = addSavingAreaEntry(t, { ownerFolderId: inner.id, sourceType: 'checklist', sourceId: lunch.id })
   t = addSavingAreaEntry(t, { ownerFolderId: inner.id, sourceType: 'checklist', sourceId: lunch.id })
   assert.equal(calculateFolderView(t, inner.id).expense, 7000)
-  // the inner folder counts once (its Records box says 1) until it is added to the parent's Saving Area
-  assert.equal(calculateFolderView(t, daily.id).expense, 7000)
+  // the inner folder is only in the Folder container -> it adds nothing to the parent's total
+  assert.equal(calculateFolderView(t, daily.id).expense, 0)
   // ONE record (a "+ Edit" copy) in the parent's Saving Area -> parent = that one record, 7000
   const own = { ...t, savingAreaEntries: t.savingAreaEntries.filter((e) => e.ownerFolderId === inner.id), transactions: [] }
   const u = copyFolderToSavingArea(own, { folderId: inner.id, ownerFolderId: daily.id, id: 'cp2' })
@@ -499,31 +499,76 @@ test('fingerprints: finishing a "+ Edit" with no change merges into the identica
   assert.equal(calculateOwnerValue(t, 'page:daily').expense, 200)
 })
 
-test('folder total reflects the folders inside it by their Records box, and never twice', () => {
+test('every total comes from the Saving Area only: Checklist and Folder containers never count', () => {
   let t = createFolder(base(), { sectionId: 'expense', parentFolderId: null, name: 'lunch folder', usage: 'daily' })
   const lunch = lastFolder(t)
   t = createFolder(t, { sectionId: 'expense', parentFolderId: lunch.id, name: 'Folder 1' })
   const f1 = lastFolder(t)
-  t = createChecklistTemplate(t, { folderId: f1.id, title: 'x', defaultAmount: 3000 })
+  t = createChecklistTemplate(t, { folderId: f1.id, title: 'x', defaultAmount: 6000, baseRecord: 3 })
   const x = lastList(t)
-  t = addSavingAreaEntry(t, { ownerFolderId: f1.id, sourceType: 'checklist', sourceId: x.id })
+  t = createTransaction(t, { checklistId: x.id, folderId: f1.id, amount: 6000, source: 'checklist' })
+  const zero = { income: 0, expense: 0, saving: 0 }
+  // templates, starting records, recorded transactions: none of it is in a Saving Area
+  assert.deepEqual(calculateFolderView(t, f1.id), zero)
+  assert.deepEqual(calculateFolderView(t, lunch.id), zero)
+  assert.deepEqual(calculateOwnerValue(t, 'page:daily'), zero)
+  // a record in Folder 1's Saving Area counts there...
   t = addSavingAreaEntry(t, { ownerFolderId: f1.id, sourceType: 'checklist', sourceId: x.id })
   assert.equal(calculateFolderView(t, f1.id).expense, 6000)
-  assert.equal(calculateFolderView(t, lunch.id).expense, 6000)         // Folder 1 (Records 1) is inside lunch
-  assert.equal(folderRecordCount(t, f1, lunch.id), 1)
-  // "+ Add item" on Folder 1 inside lunch: one record added -> still 6000, Records 1, not doubled
+  assert.equal(calculateFolderView(t, lunch.id).expense, 0)                  // ...but not in lunch (Folder 1 is only in its container)
+  // "+ Add item" on Folder 1 inside lunch puts a copy in lunch's Saving Area -> now lunch counts it
   t = addSavingAreaEntry(t, { ownerFolderId: lunch.id, sourceType: 'folder', sourceId: f1.id })
   assert.equal(calculateFolderView(t, lunch.id).expense, 6000)
-  assert.equal(folderRecordCount(t, f1, lunch.id), 1)
-  // again (same content, same record) -> 2 records -> 12000
-  t = addSavingAreaEntry(t, { ownerFolderId: lunch.id, sourceType: 'folder', sourceId: f1.id })
+  t = addSavingAreaEntry(t, { ownerFolderId: lunch.id, sourceType: 'folder', sourceId: f1.id }) // same content again = same item, x2
   assert.equal(calculateFolderView(t, lunch.id).expense, 12000)
-  assert.equal(folderRecordCount(t, f1, lunch.id), 2)
-  // a change inside Folder 1 reaches lunch's card at once... but not the records already added
+  // a change inside Folder 1 does not touch the records already added
   t = addSavingAreaEntry(t, { ownerFolderId: f1.id, sourceType: 'checklist', sourceId: x.id })
-  assert.equal(calculateFolderView(t, f1.id).expense, 9000)
+  assert.equal(calculateFolderView(t, f1.id).expense, 12000)
   assert.equal(calculateFolderView(t, lunch.id).expense, 12000)
-  // lunch added to the day page: the copy carries Folder 1 and its records without doubling
   t = addSavingAreaEntry(t, { ownerFolderId: 'page:daily', sourceType: 'folder', sourceId: lunch.id })
   assert.equal(calculateOwnerValue(t, 'page:daily').expense, 12000)
+})
+
+test('Quick add: one-off records straight into the Saving Area, never a checklist', () => {
+  let t = createFolder(base(), { sectionId: 'expense', parentFolderId: null, name: 'lunch folder', usage: 'daily' })
+  const lunch = lastFolder(t)
+  const lists = t.checklists.length
+  t = addQuickEntries(t, { ownerFolderId: 'page:daily', name: '', amount: '120', transactionType: 'expense', records: 3 })
+  assert.equal(t.checklists.length, lists)                                   // nothing in the Checklists list
+  assert.equal(t.savingAreaEntries.length, 3)
+  assert.equal(t.savingAreaEntries[0].titleSnapshot, 'Checklist 1')          // blank name -> auto name
+  assert.deepEqual(calculateOwnerValue(t, 'page:daily'), { income: 0, expense: 360, saving: 0 })
+  // same name + amount groups into one row with a higher count
+  t = addQuickEntries(t, { ownerFolderId: 'page:daily', name: 'Checklist 1', amount: 120, transactionType: 'expense' })
+  assert.deepEqual(groupSavingAreaEntries(t.savingAreaEntries).map((g) => [g.titleSnapshot, g.amount, g.count]), [['Checklist 1', 120, 4]])
+  // next blank name is numbered on
+  t = addQuickEntries(t, { ownerFolderId: 'page:daily', amount: 5, transactionType: 'income' })
+  assert.equal(t.savingAreaEntries.at(-1).titleSnapshot, 'Checklist 2')
+  // a folder's own Saving Area: the folder's card goes up
+  t = addQuickEntries(t, { ownerFolderId: lunch.id, name: 'tea', amount: 30, transactionType: 'saving', records: 2 })
+  assert.equal(calculateFolderView(t, lunch.id).saving, 60)
+  // validation
+  assert.throws(() => addQuickEntries(t, { ownerFolderId: 'page:daily', amount: 0, transactionType: 'expense' }))
+  assert.throws(() => addQuickEntries(t, { ownerFolderId: 'page:daily', amount: 5, transactionType: 'expense', records: 1.5 }))
+  assert.throws(() => addQuickEntries(t, { ownerFolderId: 'page:daily', amount: 5, transactionType: 'nope' }))
+  // undo = remove exactly those entries, totals return
+  const ids = t.savingAreaEntries.filter((e) => e.titleSnapshot === 'tea').map((e) => e.id)
+  const undone = ids.reduce((acc, id) => removeSavingAreaEntry(acc, id), t)
+  assert.equal(calculateFolderView(undone, lunch.id).saving, 0)
+  // identical quick entries stay independent of any checklist edit
+  assert.equal(t.savingAreaEntries[0].quick, true)
+})
+
+test('a Saving Area view totals only its own records, not the folders in the Folder container', () => {
+  let t = createFolder(base(), { sectionId: 'expense', parentFolderId: null, name: 'lunch folder', usage: 'daily' })
+  const lunch = lastFolder(t)
+  t = createFolder(t, { sectionId: 'expense', parentFolderId: lunch.id, name: 'Folder 1' })
+  const f1 = lastFolder(t)
+  t = createChecklistTemplate(t, { folderId: f1.id, title: 'x', defaultAmount: 6000 })
+  t = addSavingAreaEntry(t, { ownerFolderId: f1.id, sourceType: 'checklist', sourceId: lastList(t).id })
+  assert.equal(calculateFolderView(t, lunch.id).expense, 0)          // Folder 1 is only in the Folder container
+  assert.equal(calculateSavingAreaValue(t, lunch.id).expense, 0)     // its Saving Area is empty -> 0
+  t = addQuickEntries(t, { ownerFolderId: lunch.id, name: 'tea', amount: 20, transactionType: 'expense' })
+  assert.equal(calculateSavingAreaValue(t, lunch.id).expense, 20)
+  assert.equal(calculateFolderView(t, lunch.id).expense, 20)         // card and Saving Area view always agree
 })
