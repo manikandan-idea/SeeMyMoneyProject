@@ -66,7 +66,7 @@ function SavingArea({ entries, choices, onAdd, onOpen, title = '🐖 Saving Area
       ) : (
         groups.map((group) => (
           <div key={group.key} className="saving-area__row">
-            <span>{group.sourceType === 'folder' ? '📁' : '📋'} {group.titleSnapshot}{group.amount !== undefined ? ` · ${formatINR(group.amount)}` : ''}</span>
+            <span>{group.sourceType === 'folder' ? '📁' : group.entries?.[0]?.quick ? '⚡' : '📋'} {group.titleSnapshot}{group.amount !== undefined ? ` · ${formatINR(group.amount)}` : ''}</span>
             <span className="saving-area__count">×{group.count}</span>
           </div>
         ))

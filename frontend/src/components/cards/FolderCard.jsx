@@ -36,6 +36,7 @@ import { calculateFolderView, folderRecordCount, folderItemEntries } from '../..
 import { useHist, setHist, revertStruct, reapplyStruct } from './historyStore.js'
 import { useEntryHistory } from './entryHistory.js'
 import QuickAdd from './QuickAdd.jsx'
+import SavingFolderView from './SavingFolderView.jsx'
 import { makeId, groupSavingAreaEntries } from '../../domain/folderChecklist.js'
 import AdvancedSettings, { parseRecordCount } from './AdvancedSettings.jsx'
 import ChecklistSection from './ChecklistSection.jsx'
@@ -52,7 +53,8 @@ function nextName(base, names) {
   return `${base} ${n}`
 }
 
-function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], onOpenSavingArea, onTwin, onRemove, initiallyOpen = false, onCopyEdit, editingCopy = false, onDone, onBack, onMenuDelete, tapView: tapViewProp, pageMode = false, onSheetDone }) {
+function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], onOpenSavingArea, onTwin, onRemove, initiallyOpen = false, onCopyEdit, editingCopy = false, levelTrail, onEditInner, onDone, onBack, onMenuDelete, tapView: tapViewProp, pageMode = false, onSheetDone }) {
+  const [savingOnly, setSavingOnly] = useState(false) // "+ Edit" copy editor: slider = show only the Saving Area
   const [sheetOpen, setSheetOpen] = useState(false) // inner folder tapped in an edit view -> floating card
   const [pageOpen, setPageOpen] = useState(false) // tapped card -> this folder as its own full page
   const tapView = tapViewProp ?? Boolean(onCopyEdit || editingCopy) // period-page folders: tapping the card = use view
@@ -225,15 +227,45 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
     : []
   const cls = `fc fc--d${depth % 3}${depth > 0 ? ' fc--inner' : ''}${editingCopy ? ' fc--copy' : ''}${onCopyEdit ? ' fc--page' : ''}`
   const delTitle = itemEntries.length > 0 ? 'Remove one record' : 'Hide this folder'
+  // Banner of the "+ Edit" copy editor: Back, depth text, Quick add (fixed on the right) and the
+  // Saving Area slider (ON = show only what is in this copy's Saving Area).
+  const copyBanner = editingCopy && (
+    <div className="fc__copynote">
+      <div className="fc__copynote-top">
+        <div className="fc__copynote-main">
+          {onBack && <button type="button" className="fc__back" onClick={onBack} title="Discard this copy and go back, nothing changes">← Back</button>}
+          <span className="fc__copynote-text">
+            {levelTrail && levelTrail.length > 1
+              ? <><b className="fc__level">Level {levelTrail.length}</b> · {levelTrail.join(' › ')}</>
+              : 'Editing a copy · saved in the Saving Area, the original is unchanged'}
+          </span>
+        </div>
+        <QuickAdd state={state} ownerId={folder.id} history={folderHistory} where={`${folder.name} copy’s Saving Area`} />
+      </div>
+      <label className="fc__switch" title="ON: show only the checklists and folders that are in this copy's Saving Area">
+        <input type="checkbox" role="switch" checked={savingOnly} onChange={(e) => setSavingOnly(e.target.checked)} />
+        <span className="fc__switch-track" aria-hidden="true"><span className="fc__switch-knob" /></span>
+        <span className="fc__switch-label">Saving Area only</span>
+      </label>
+    </div>
+  )
+
+  if (editingCopy && savingOnly) {
+    return (
+      <div className={cls}>
+        {copyBanner}
+        <div className="fc__savingwrap">
+          <SavingFolderView state={state} ownerId={folder.id} title={folder.name} onClose={onDone ?? (() => setSavingOnly(false))}
+            history={folderHistory} actions={actions}
+            onUpdateDefault={folderHistory.updateDefault} onUpdateEntries={folderHistory.updateEntries} />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={cls}>
-      {editingCopy && (
-        <div className="fc__copynote">
-          {onBack && <button type="button" className="fc__back" onClick={onBack} title="Discard this copy and go back, nothing changes">← Back</button>}
-          <span>Editing a copy · saved in the Saving Area, the original is unchanged</span>
-          <QuickAdd state={state} ownerId={folder.id} history={folderHistory} where={`${folder.name} copy’s Saving Area`} />
-        </div>
-      )}
+      {copyBanner}
       <div className="fc__row">
         {depth > 0 && (
           <div className="fc__count" role="status" aria-label={`Records: ${records}`}>
@@ -290,6 +322,9 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
             quickGroups={quickGroups}
             onQuickRepeat={(g) => folderHistory.add({ sourceType: 'checklist', sourceId: g.sourceId, cloneOf: g.entries[g.entries.length - 1].id })}
             onQuickRemove={(g) => folderHistory.remove(g.entries[g.entries.length - 1])}
+            onQuickRestore={(entry) => actions.restoreSavingAreaEntry(entry)}
+            onQuickEditAmount={(g, n) => folderHistory.updateEntries(g.entries.map((e) => e.id), n)}
+            onQuickOther={(g, n) => folderHistory.quickAdd({ name: g.titleSnapshot, amount: n, transactionType: g.entries[0].transactionType, records: 1 })}
             onCreate={(p) => actions.createChecklist({ folderId: folder.id, sectionId: folder.sectionId, ...p })} />
 
           <div className="fc__sec">
@@ -317,7 +352,7 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
                 <FolderCard key={k.id} state={state} folder={k} depth={depth + 1} ownerId={folder.id}
                   trail={path} actions={actions} onOpenSavingArea={onOpenSavingArea} tapView={tapView}
                   initiallyOpen={fresh.has(k.id)}
-                  onTwin={() => twinOf(k)}
+                  onTwin={() => (editingCopy && onEditInner ? onEditInner(k) : twinOf(k))}
                   onRemove={() => removeKid(k)} />
               ))}
             </div>

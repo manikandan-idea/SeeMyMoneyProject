@@ -22,6 +22,7 @@ import { parseRecordCount } from '../cards/AdvancedSettings.jsx'
 import SavingFolderView from '../cards/SavingFolderView.jsx'
 import FolderCard from '../cards/FolderCard.jsx'
 import QuickAdd from '../cards/QuickAdd.jsx'
+import CopyEditor from '../cards/CopyEditor.jsx'
 import { makeId, pageOwnerId } from '../../domain/folderChecklist.js'
 import { calculatePeriodTotals, getPeriodRange } from '../../domain/analytics.js'
 
@@ -252,10 +253,10 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpe
                     </div>,
                     copy && (
                       <div key={copy.id} className="screen-lock__top">
-                      <FolderCard state={state} folder={copy} depth={0} ownerId={pageOwnerId(tab.usage)}
-                        actions={cardActions} onOpenSavingArea={onOpenSavingArea}
-                        editingCopy onDone={() => { cardActions.mergeIdenticalCopy(pageOwnerId(tab.usage), copy.id); setEditing(null) }}
-                        onBack={() => {
+                      <CopyEditor state={state} actions={cardActions} onOpenSavingArea={onOpenSavingArea}
+                        rootCopyId={copy.id} ownerId={pageOwnerId(tab.usage)}
+                        onRootDone={() => { cardActions.mergeIdenticalCopy(pageOwnerId(tab.usage), copy.id); setEditing(null) }}
+                        onRootBack={() => {
                           // discard the copy: removing its only Saving Area entry also deletes the copy
                           const entry = state.savingAreaEntries.find((e) => e.sourceType === 'folder' && e.sourceId === copy.id)
                           if (entry) cardActions.removeSavingAreaEntry(entry.id)

@@ -166,3 +166,37 @@
 
 .fc__head, .fc__row--tap { user-select:none; -webkit-user-select:none; }
 .fc__row--tap { cursor:pointer; }
+
+/* Level indicator in the "+ Edit" copy banner, and the ⚡ badge on Quick add checklist rows */
+.fc__level { background:#4f46e5; color:#fff; border-radius:10px; padding:1px 8px; font-weight:700; }
+.fc__copynote { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.cr--quick { position:relative; }
+.cr__qbadge { position:absolute; top:-9px; left:-7px; width:22px; height:22px; border-radius:50%; background:#fbbf24;
+  display:flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(17,24,39,.35); z-index:2; }
+
+/* ---- "+ Edit" copy editor banner: Back, depth text, Quick add pinned right, Saving Area slider ---- */
+.fc__copynote { display:flex; flex-direction:column; align-items:stretch; gap:8px; flex-wrap:nowrap; }
+.fc__copynote-top { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.fc__copynote-main { flex:1 1 auto; min-width:0; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.fc__copynote-text { min-width:0; font-size:12px; line-height:1.3; color:#4b5563; }
+.fc__copynote-top > .qa-btn { flex:none; margin-left:auto; } /* always pinned to the right edge */
+
+.fc__back { height:36px; padding:0 14px; border-radius:999px; border:1px solid #a5b4fc; background:linear-gradient(#f5f7ff,#e3e9ff);
+  color:#1e3a8a; font-weight:700; font-size:13px; cursor:pointer; box-shadow:0 2px 6px rgba(30,58,138,.22);
+  transition:transform .12s ease, box-shadow .12s ease, background .12s ease; }
+.fc__back:hover { background:linear-gradient(#ffffff,#d7e0ff); transform:translateY(-1px); box-shadow:0 4px 10px rgba(30,58,138,.28); }
+.fc__back:active { transform:translateY(1px); box-shadow:0 1px 3px rgba(30,58,138,.3); }
+.fc__back:focus-visible { outline:3px solid #4f46e5; outline-offset:2px; }
+.qa-btn { transition:transform .12s ease, box-shadow .12s ease, background .12s ease; }
+.qa-btn:hover { background:#1f2937; transform:translateY(-1px); box-shadow:0 5px 14px rgba(17,24,39,.35); }
+.qa-btn:active { transform:translateY(1px); box-shadow:0 1px 4px rgba(17,24,39,.35); }
+
+.fc__switch { display:inline-flex; align-items:center; gap:10px; align-self:flex-start; cursor:pointer; min-height:44px; user-select:none; }
+.fc__switch input { position:absolute; opacity:0; width:1px; height:1px; }
+.fc__switch-track { width:46px; height:26px; border-radius:13px; background:#cbd2e3; position:relative; flex:none; transition:background .15s ease; box-shadow:inset 0 1px 3px rgba(17,24,39,.25); }
+.fc__switch-knob { position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(17,24,39,.4); transition:transform .15s ease; }
+.fc__switch input:checked + .fc__switch-track { background:#4f46e5; }
+.fc__switch input:checked + .fc__switch-track .fc__switch-knob { transform:translateX(20px); }
+.fc__switch input:focus-visible + .fc__switch-track { outline:3px solid #4f46e5; outline-offset:2px; }
+.fc__switch-label { font-size:13px; font-weight:600; color:#1f2a5c; }
+.fc__savingwrap > .fc { box-shadow:none; border:0; padding:0; background:transparent; }

@@ -38,7 +38,8 @@ function ChecklistEntryRow({ g, template, onAdd, onRemoveOne, onUpdateDefault, o
   }
   if (mode) {
     return (
-      <div className="cr">
+      <div className={`cr${g.entries[0]?.quick ? ' cr--quick' : ''}`}>
+        {g.entries[0]?.quick && <span className="cr__qbadge" title="Quick add: only in this Saving Area"><svg width="10" height="10" viewBox="0 0 24 24" fill="#111827" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6z" /></svg></span>}
         <span className="cr__etitle">Amount ₹</span>
         <input className="cr__input" type="number" min="1" inputMode="decimal" autoFocus value={value}
           aria-label="Amount in rupees" style={bad ? { borderColor: '#c0262d' } : undefined}
@@ -52,7 +53,8 @@ function ChecklistEntryRow({ g, template, onAdd, onRemoveOne, onUpdateDefault, o
     )
   }
   return (
-    <div className="cr">
+    <div className={`cr${g.entries[0]?.quick ? ' cr--quick' : ''}`}>
+      {g.entries[0]?.quick && <span className="cr__qbadge" title="Quick add: only in this Saving Area"><svg width="10" height="10" viewBox="0 0 24 24" fill="#111827" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6z" /></svg></span>}
       <div className="cr__count" role="status" aria-label={`Records: ${g.count}`}><b>{g.count}</b><span>Records</span></div>
       <span className="cr__name" title={g.titleSnapshot}>{g.titleSnapshot}</span>
       <button type="button" className="cr__def" aria-label="Edit amount" onClick={() => open('entry')}>

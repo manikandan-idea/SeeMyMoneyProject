@@ -14,6 +14,7 @@ import ChecklistSection from './ChecklistSection.jsx'
 import FolderCard from './FolderCard.jsx'
 import SavingFolderView from './SavingFolderView.jsx'
 import QuickAdd from './QuickAdd.jsx'
+import CopyEditor from './CopyEditor.jsx'
 
 function FolderPage({ state, folder, actions, onBack, onOpenSavingArea }) {
   const [adding, setAdding] = useState(false)
@@ -76,10 +77,10 @@ function FolderPage({ state, folder, actions, onBack, onOpenSavingArea }) {
                 </div>,
                 copy && (
                   <div key={copy.id} className="screen-lock__top">
-                    <FolderCard state={state} folder={copy} depth={0} ownerId={folder.id} trail={[folder.name]}
-                      actions={actions} onOpenSavingArea={onOpenSavingArea}
-                      editingCopy onDone={() => { actions.mergeIdenticalCopy(folder.id, copy.id); setEditing(null) }}
-                      onBack={() => {
+                    <CopyEditor state={state} actions={actions} onOpenSavingArea={onOpenSavingArea}
+                      rootCopyId={copy.id} ownerId={folder.id} trail={[folder.name]}
+                      onRootDone={() => { actions.mergeIdenticalCopy(folder.id, copy.id); setEditing(null) }}
+                      onRootBack={() => {
                         const entry = state.savingAreaEntries.find((e) => e.sourceType === 'folder' && e.sourceId === copy.id)
                         if (entry) actions.removeSavingAreaEntry(entry.id)
                         setEditing(null)
