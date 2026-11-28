@@ -21,6 +21,7 @@ import { makeId } from '../../domain/folderChecklist.js'
 import AdvancedSettings, { parseRecordCount } from './AdvancedSettings.jsx'
 import ChecklistRow from './ChecklistRow.jsx'
 import QuickRow from './QuickRow.jsx'
+import { ShrinkButton, ShrinkCount, ShrinkList } from './ShrinkCard.jsx'
 
 const TYPE_TO_ID = { spend: 'expense', received: 'income', savings: 'saving' }
 
@@ -33,6 +34,7 @@ function nextName(base, names) {
 function ChecklistSection({ lists, state, trail = [], actions, onCreate, onHistory, variant = 'default', onAddToSaving, hideAdd = false, quickGroups = [], onQuickRepeat, onQuickRemove, onQuickRestore, onQuickEditAmount, onQuickOther }) {
   const nameRef = useRef(null)
   const [adding, setAdding] = useState(false)
+  const [shrunk, setShrunk] = useState(false) // Shrink / Expand button of the Checklists card
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
   const [type, setType] = useState('spend')
@@ -80,7 +82,8 @@ function ChecklistSection({ lists, state, trail = [], actions, onCreate, onHisto
   return (
     <div className="fc__sec">
       <div className="fc__sechead">
-        <span className="fc__sectitle">Checklists</span>
+        <span className="fc__sectitle">Checklists<ShrinkCount n={lists.length + quickGroups.length} /></span>
+        <ShrinkButton shrunk={shrunk} count={lists.length + quickGroups.length} onToggle={() => setShrunk((v) => !v)} />
         {!hideAdd && <button type="button" className="fc__ibtn" onClick={openForm}>+ Add checklist</button>}
       </div>
       {adding && !hideAdd && (
@@ -122,7 +125,7 @@ function ChecklistSection({ lists, state, trail = [], actions, onCreate, onHisto
           <p className="fc__hint">Enter moves to the next field. Enter on the last one creates it.</p>
         </form>
       )}
-      <div className="fc__list">
+      <ShrinkList className="fc__list" shrunk={shrunk} maxHeight={152}>
         {lists.length === 0 && quickGroups.length === 0 && <div className="fc__empty">No checklists yet</div>}
         {lists.map((c) => (
           <ChecklistRow key={c.id} checklist={c} trail={trail} variant={variant}
@@ -143,7 +146,7 @@ function ChecklistSection({ lists, state, trail = [], actions, onCreate, onHisto
           <QuickRow key={g.key} group={g} onRepeat={() => onQuickRepeat?.(g)} onRemove={() => onQuickRemove?.(g)}
             onRestore={(entry) => onQuickRestore?.(entry)} onEditAmount={(n) => onQuickEditAmount?.(g, n)} onOther={(n) => onQuickOther?.(g, n)} />
         ))}
-      </div>
+      </ShrinkList>
     </div>
   )
 }

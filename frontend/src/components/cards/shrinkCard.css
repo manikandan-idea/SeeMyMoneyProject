@@ -1,0 +1,16 @@
+/* Shrinkable cards — values from the "Shrinkable cards" design. */
+.shr { position: relative; }
+.shr__list { position: relative; }
+.shr__list.is-shrunk { overflow-y: auto; overscroll-behavior: contain; padding: 2px 2px 2px 0; }
+.shr__fade { position: absolute; left: 0; right: 0; bottom: 0; height: 26px; pointer-events: none;
+  background: linear-gradient(to bottom, rgba(255,255,255,0), var(--shr-bg, #fff)); }
+.shr__more { text-align: center; font-size: 12px; font-weight: 600; color: #4338ca; margin-top: 6px; }
+.shr__count { font-size: 12px; color: #5b6475; font-weight: 400; margin-left: 6px; }
+.shr__btn { flex: none; height: 44px; padding: 0 12px; border-radius: 22px; border: 1px solid #c9cfdd; background: #fff; color: #374151;
+  font: inherit; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  transition: transform .12s ease, box-shadow .12s ease, background .12s ease; }
+.shr__btn:hover { background: #f5f7ff; transform: translateY(-1px); box-shadow: 0 3px 8px rgba(17,24,39,.12); }
+.shr__btn:active { transform: translateY(1px); box-shadow: none; }
+.shr__btn:focus-visible { outline: 3px solid #4f46e5; outline-offset: 2px; }
+.fc__sechead, .period__head { flex-wrap: wrap; row-gap: 6px; }
+.fc__sechead .shr__btn, .period__head .shr__btn { margin-left: auto; }

@@ -37,6 +37,7 @@ import { useHist, setHist, revertStruct, reapplyStruct } from './historyStore.js
 import { useEntryHistory } from './entryHistory.js'
 import QuickAdd from './QuickAdd.jsx'
 import SavingFolderView from './SavingFolderView.jsx'
+import { ShrinkButton, ShrinkCount, ShrinkList } from './ShrinkCard.jsx'
 import { makeId, groupSavingAreaEntries } from '../../domain/folderChecklist.js'
 import AdvancedSettings, { parseRecordCount } from './AdvancedSettings.jsx'
 import ChecklistSection from './ChecklistSection.jsx'
@@ -54,6 +55,7 @@ function nextName(base, names) {
 }
 
 function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], onOpenSavingArea, onTwin, onRemove, initiallyOpen = false, onCopyEdit, editingCopy = false, levelTrail, onEditInner, onDone, onBack, onMenuDelete, tapView: tapViewProp, pageMode = false, onSheetDone }) {
+  const [foldersShrunk, setFoldersShrunk] = useState(false) // Shrink / Expand button of the Folders card
   const [savingOnly, setSavingOnly] = useState(false) // "+ Edit" copy editor: slider = show only the Saving Area
   const [sheetOpen, setSheetOpen] = useState(false) // inner folder tapped in an edit view -> floating card
   const [pageOpen, setPageOpen] = useState(false) // tapped card -> this folder as its own full page
@@ -329,7 +331,8 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
 
           <div className="fc__sec">
             <div className="fc__sechead">
-              <span className="fc__sectitle">Folders</span>
+              <span className="fc__sectitle">Folders<ShrinkCount n={kids.length} /></span>
+              <ShrinkButton shrunk={foldersShrunk} count={kids.length} onToggle={() => setFoldersShrunk((v) => !v)} />
               {editMode && <button type="button" className="fc__ibtn" onClick={() => openForm('f')}>+ Add folder</button>}
             </div>
             {adding === 'f' && (
@@ -346,7 +349,7 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
                 <button type="submit" className="fc__create">Create Folder</button>
               </form>
             )}
-            <div className="fc__list">
+            <ShrinkList className="fc__list" shrunk={foldersShrunk} maxHeight={150}>
               {kids.length === 0 && <div className="fc__empty">No folders yet</div>}
               {kids.map((k) => (
                 <FolderCard key={k.id} state={state} folder={k} depth={depth + 1} ownerId={folder.id}
@@ -355,7 +358,7 @@ function FolderCard({ state, folder, depth = 0, ownerId, actions, trail = [], on
                   onTwin={() => (editingCopy && onEditInner ? onEditInner(k) : twinOf(k))}
                   onRemove={() => removeKid(k)} />
               ))}
-            </div>
+            </ShrinkList>
           </div>
 
         </div>

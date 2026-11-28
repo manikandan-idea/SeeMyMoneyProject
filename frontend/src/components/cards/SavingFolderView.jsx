@@ -15,6 +15,7 @@ import { formatINR } from '../../utils/format.js'
 import { groupSavingAreaEntries } from '../../domain/folderChecklist.js'
 import { calculateFolderView, calculateSavingAreaValue } from '../../domain/analytics.js'
 import Svg from './Svg.jsx'
+import { ShrinkButton, ShrinkCount, ShrinkList } from './ShrinkCard.jsx'
 import FolderCard from './FolderCard.jsx'
 import './cards.css'
 
@@ -60,7 +61,7 @@ function ChecklistEntryRow({ g, template, onAdd, onRemoveOne, onUpdateDefault, o
       <button type="button" className="cr__def" aria-label="Edit amount" onClick={() => open('entry')}>
         {formatINR(amount)}<span className="cr__pencil"><Svg d={PENCIL_SVG} size={14} /></span>
       </button>
-      {template && (
+      {(template || g.entries[0]?.quick) && (
         <>
           <button type="button" className="cr__other" aria-label="Add with a different amount" onClick={() => open('other')}>Other</button>
           <button type="button" className="cr__rec" aria-label={`Add one more ${g.titleSnapshot}`}
@@ -75,6 +76,8 @@ function ChecklistEntryRow({ g, template, onAdd, onRemoveOne, onUpdateDefault, o
 }
 
 function SavingFolderView({ state, ownerId, title, onClose, history, onUpdateDefault, onUpdateEntries, actions }) {
+  const [listsShrunk, setListsShrunk] = useState(false)
+  const [foldersShrunk, setFoldersShrunk] = useState(false)
   const [sheetId, setSheetId] = useState(null) // folder row tapped -> floating folder card
   const sheetFolder = sheetId ? state.folders.find((x) => x.id === sheetId) : null
   const onAdd = (input) => history.add(input)
@@ -102,22 +105,26 @@ function SavingFolderView({ state, ownerId, title, onClose, history, onUpdateDef
 
       <div className="fc__inside">
         <div className="fc__sec">
-          <div className="fc__sechead"><span className="fc__sectitle">Checklists</span></div>
-          <div className="sv__list">
+          <div className="fc__sechead"><span className="fc__sectitle">Checklists<ShrinkCount n={lists.length} /></span><ShrinkButton shrunk={listsShrunk} count={lists.length} onToggle={() => setListsShrunk((v) => !v)} /></div>
+          <ShrinkList className="sv__list" shrunk={listsShrunk} maxHeight={152}>
             {lists.length === 0 && <div className="sv__empty">No checklists yet</div>}
             {lists.map((g) => (
               <ChecklistEntryRow key={g.key} g={g} template={state.checklists.find((c) => c.id === g.sourceId) ?? null}
-                onAdd={(amount, repeat) => onAdd(repeat
-                  ? { sourceType: 'checklist', sourceId: g.sourceId, cloneOf: g.entries[g.entries.length - 1].id }
-                  : { sourceType: 'checklist', sourceId: g.sourceId, ...(amount ? { amount } : {}) })}
+                onAdd={(amount, repeat) => {
+                  if (repeat) return onAdd({ sourceType: 'checklist', sourceId: g.sourceId, cloneOf: g.entries[g.entries.length - 1].id })
+                  if (g.entries[0]?.quick) { // Quick add record: "Other" = same name, another amount
+                    return history.quickAdd({ name: g.titleSnapshot, amount, transactionType: g.entries[0].transactionType, records: 1 })
+                  }
+                  return onAdd({ sourceType: 'checklist', sourceId: g.sourceId, ...(amount ? { amount } : {}) })
+                }}
                 onRemoveOne={() => removeOne(g)} onUpdateDefault={onUpdateDefault} onUpdateEntries={onUpdateEntries} />
             ))}
-          </div>
+          </ShrinkList>
         </div>
 
         <div className="fc__sec">
-          <div className="fc__sechead"><span className="fc__sectitle">Folders</span></div>
-          <div className="sv__list">
+          <div className="fc__sechead"><span className="fc__sectitle">Folders<ShrinkCount n={folders.length} /></span><ShrinkButton shrunk={foldersShrunk} count={folders.length} onToggle={() => setFoldersShrunk((v) => !v)} /></div>
+          <ShrinkList className="sv__list" shrunk={foldersShrunk} maxHeight={150}>
             {folders.length === 0 && <div className="sv__empty">No folders yet</div>}
             {folders.map((g) => {
               const f = state.folders.find((x) => x.id === g.sourceId)
@@ -151,7 +158,7 @@ function SavingFolderView({ state, ownerId, title, onClose, history, onUpdateDef
                 </div>
               )
             })}
-          </div>
+          </ShrinkList>
         </div>
       </div>
 

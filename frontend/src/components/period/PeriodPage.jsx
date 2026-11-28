@@ -23,6 +23,7 @@ import SavingFolderView from '../cards/SavingFolderView.jsx'
 import FolderCard from '../cards/FolderCard.jsx'
 import QuickAdd from '../cards/QuickAdd.jsx'
 import CopyEditor from '../cards/CopyEditor.jsx'
+import { ShrinkButton, ShrinkCount, ShrinkList } from '../cards/ShrinkCard.jsx'
 import { makeId, pageOwnerId } from '../../domain/folderChecklist.js'
 import { calculatePeriodTotals, getPeriodRange } from '../../domain/analytics.js'
 
@@ -128,6 +129,7 @@ export function periodTitle(tabId, now = new Date()) {
 function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpenSavingArea, actions, cardActions }) {
   const tab = TABS.find((t) => t.id === tabId) ?? TABS[0]
   const [adding, setAdding] = useState(false)
+  const [foldersShrunk, setFoldersShrunk] = useState(false) // Shrink / Expand button of the Folders card
   const [now, setNow] = useState(() => new Date())
   const [savingOpen, setSavingOpen] = useState(false)
   useEffect(() => { // keep the heading right when the day changes while the app stays open
@@ -225,13 +227,14 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpe
 
           <section className="period__card">
             <div className="period__head">
-              <h2>Folders</h2>
+              <h2>Folders<ShrinkCount n={view.folders.length} /></h2>
+              <ShrinkButton shrunk={foldersShrunk} count={view.folders.length} onToggle={() => setFoldersShrunk((v) => !v)} />
               <button type="button" className="fc__ibtn" onClick={() => setAdding(true)}>+ Add folder</button>
             </div>
             {view.folders.length === 0 ? (
               <p className="period__empty">{tab.empty}</p>
             ) : (
-              <div className="period__list">
+              <ShrinkList className="period__list" shrunk={foldersShrunk && !editing} maxHeight={150}>
                 {view.folders.flatMap((f) => {
                   const copy = editing && editing.sourceId === f.id
                     ? state.folders.find((x) => x.id === editing.copyId) : null
@@ -266,7 +269,7 @@ function PeriodPage({ state, tab: tabId, onTab, onOpenFolder, onAddFolder, onOpe
                     ),
                   ]
                 })}
-              </div>
+              </ShrinkList>
             )}
           </section>
         </>

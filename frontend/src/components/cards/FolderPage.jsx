@@ -15,9 +15,11 @@ import FolderCard from './FolderCard.jsx'
 import SavingFolderView from './SavingFolderView.jsx'
 import QuickAdd from './QuickAdd.jsx'
 import CopyEditor from './CopyEditor.jsx'
+import { ShrinkButton, ShrinkCount, ShrinkList } from './ShrinkCard.jsx'
 
 function FolderPage({ state, folder, actions, onBack, onOpenSavingArea }) {
   const [adding, setAdding] = useState(false)
+  const [foldersShrunk, setFoldersShrunk] = useState(false) // Shrink / Expand button of the Folders card
   const [savingOpen, setSavingOpen] = useState(false)
   const [editing, setEditing] = useState(null) // { copyId, sourceId }
 
@@ -50,13 +52,14 @@ function FolderPage({ state, folder, actions, onBack, onOpenSavingArea }) {
 
       <section className="period__card">
         <div className="period__head">
-          <h2>Folders</h2>
+          <h2>Folders<ShrinkCount n={kids.length} /></h2>
+          <ShrinkButton shrunk={foldersShrunk} count={kids.length} onToggle={() => setFoldersShrunk((v) => !v)} />
           <button type="button" className="fc__ibtn" onClick={() => setAdding(true)}>+ Add folder</button>
         </div>
         {kids.length === 0 ? (
           <p className="period__empty">No folders yet.</p>
         ) : (
-          <div className="period__list">
+          <ShrinkList className="period__list" shrunk={foldersShrunk && !editing} maxHeight={150}>
             {kids.flatMap((k) => {
               const copy = editing && editing.sourceId === k.id ? state.folders.find((x) => x.id === editing.copyId) : null
               return [
@@ -89,7 +92,7 @@ function FolderPage({ state, folder, actions, onBack, onOpenSavingArea }) {
                 ),
               ]
             })}
-          </div>
+          </ShrinkList>
         )}
       </section>
 

@@ -232,10 +232,9 @@ export function checklistRecordCount(state, checklist) {
   return (checklist.baseRecord ?? 0) + recorded + added
 }
 
-// Records of an inner folder inside `parentId`: the records added to the Saving Area, or (none added yet) its own record count.
+// Records of a folder inside `parentId` = how many times it is in that Saving Area (0 when it is not).
 export function folderRecordCount(state, folder, parentId = folder.parentFolderId) {
-  const added = folderItemEntries(state, folder, parentId).length
-  return added > 0 ? added : (folder.recordCount ?? 1) // what the Records box shows = how many times it counts
+  return folderItemEntries(state, folder, parentId).length // 0 until it is added to that Saving Area
 }
 
 // Entries in `ownerId`'s Saving Area that are copies of `folder` ("+ Add item" / "+ Edit" taps).
